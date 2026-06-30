@@ -13,7 +13,7 @@
   html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; overflow:hidden; }
   #wrap { position:fixed; inset:0; }
-  canvas { display:block; cursor:grab; }
+  canvas { display:block; cursor:grab; touch-action:none; }
   canvas.grabbing { cursor:grabbing; }
 
   header { position:absolute; top:0; left:0; right:0; padding:14px 18px;
@@ -55,7 +55,7 @@
        de-facto money factions. <b>Hover</b> a node, <b>click</b> to isolate its neighborhood.</p>
   </header>
   <div class="legend" id="legend"></div>
-  <div class="hint">scroll = zoom · drag = pan · click node = focus</div>
+  <div class="hint">scroll / pinch = zoom · drag = pan · tap node = focus</div>
   <div id="tip"></div>
   <div id="loading">Loading the network…</div>
 </div>
@@ -213,12 +213,65 @@ cv.addEventListener('click', ev=>{
   const n = nodeAt(ev.clientX, ev.clientY);
   focus = (n===focus) ? null : n; _needsDraw=true; requestAnimationFrame(tick);
 });
+// Zoom by factor f, keeping the screen point (cx,cy) fixed.
+function zoomAt(cx, cy, f){
+  view.x = cx - (cx-view.x)*f;
+  view.y = cy - (cy-view.y)*f;
+  view.k *= f; _needsDraw=true; requestAnimationFrame(tick);
+}
 cv.addEventListener('wheel', ev=>{
   ev.preventDefault();
-  const f = ev.deltaY<0 ? 1.12 : 1/1.12;
-  view.x = ev.clientX - (ev.clientX-view.x)*f;
-  view.y = ev.clientY - (ev.clientY-view.y)*f;
-  view.k *= f; _needsDraw=true; requestAnimationFrame(tick);
+  zoomAt(ev.clientX, ev.clientY, ev.deltaY<0 ? 1.12 : 1/1.12);
+}, {passive:false});
+
+// ── touch: single-finger pan / drag, two-finger pinch-zoom, tap to focus ─────
+let pinchDist=0, pinchMid={x:0,y:0}, touchMoved=false, tapStart={x:0,y:0};
+function touchDist(t){ const dx=t[0].clientX-t[1].clientX, dy=t[0].clientY-t[1].clientY; return Math.hypot(dx,dy); }
+function touchMid(t){ return { x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2 }; }
+cv.addEventListener('touchstart', ev=>{
+  ev.preventDefault();
+  const t = ev.touches;
+  if(t.length===1){
+    const n = nodeAt(t[0].clientX, t[0].clientY);
+    if(n){ dragNode=n; } else { panning=true; }
+    last = tapStart = { x:t[0].clientX, y:t[0].clientY };
+    touchMoved=false;
+  } else if(t.length>=2){
+    dragNode=null; panning=false;          // hand off to pinch
+    pinchDist = touchDist(t); pinchMid = touchMid(t);
+  }
+}, {passive:false});
+cv.addEventListener('touchmove', ev=>{
+  ev.preventDefault();
+  const t = ev.touches;
+  if(t.length>=2){
+    const d = touchDist(t), m = touchMid(t);
+    if(pinchDist>0) zoomAt(m.x, m.y, d/pinchDist);
+    // also pan with the midpoint so two-finger drag moves the graph
+    view.x += m.x-pinchMid.x; view.y += m.y-pinchMid.y;
+    pinchDist=d; pinchMid=m; touchMoved=true;
+    _needsDraw=true; requestAnimationFrame(tick);
+  } else if(t.length===1){
+    const x=t[0].clientX, y=t[0].clientY;
+    if(Math.abs(x-tapStart.x)>4||Math.abs(y-tapStart.y)>4) touchMoved=true;
+    if(dragNode){ dragNode.x=(x-view.x)/view.k; dragNode.y=(y-view.y)/view.k; dragNode.vx=dragNode.vy=0; kick(); }
+    else if(panning){ view.x+=x-last.x; view.y+=y-last.y; _needsDraw=true; requestAnimationFrame(tick); }
+    last={x,y};
+  }
+}, {passive:false});
+cv.addEventListener('touchend', ev=>{
+  if(ev.touches.length===0){
+    if(!touchMoved && !dragNode){               // a clean tap toggles focus
+      const n = nodeAt(tapStart.x, tapStart.y);
+      focus = (n===focus) ? null : n;
+    }
+    dragNode=null; panning=false; pinchDist=0;
+    _needsDraw=true; requestAnimationFrame(tick);
+  } else if(ev.touches.length===1){
+    // dropped from pinch to one finger — resume panning from here
+    panning=true; dragNode=null; pinchDist=0;
+    last={ x:ev.touches[0].clientX, y:ev.touches[0].clientY };
+  }
 }, {passive:false});
 
 function fmt(v){ return v>=1e6 ? '$'+(v/1e6).toFixed(1)+'M' : v>=1e3 ? '$'+(v/1e3).toFixed(0)+'K' : '$'+v; }
