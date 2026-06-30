@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Louisiana's Donor Factions — who draws from the same well</title>
+<style>
+  :root {
+    --bg:#0e1418; --panel:#162028; --line:#26333d; --text:#e6edf3; --muted:#8aa0ad;
+    --dem:#3b76e0; --rep:#e0524d; --ind:#9b6bf0; --lbt:#d9a441; --grn:#36a86f; --oth:#7d8b95;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; overflow:hidden; }
+  #wrap { position:fixed; inset:0; }
+  canvas { display:block; cursor:grab; }
+  canvas.grabbing { cursor:grabbing; }
+
+  header { position:absolute; top:0; left:0; right:0; padding:14px 18px;
+    background:linear-gradient(180deg, rgba(14,20,24,0.95), rgba(14,20,24,0)); pointer-events:none; }
+  h1 { margin:0; font-size:18px; font-weight:700; letter-spacing:-0.2px; }
+  .sub { margin:3px 0 0; font-size:12.5px; color:var(--muted); max-width:680px; line-height:1.5; }
+  .sub b { color:var(--text); font-weight:600; }
+
+  .legend { position:absolute; bottom:14px; left:18px; background:var(--panel);
+    border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-size:12px; }
+  .legend .row { display:flex; align-items:center; gap:7px; margin:3px 0; }
+  .dot { width:11px; height:11px; border-radius:50%; flex:0 0 auto; }
+  .legend .note { color:var(--muted); margin-top:8px; max-width:230px; line-height:1.45; font-size:11px; }
+  .legend .stat { color:var(--muted); margin-top:6px; font-size:11px; }
+
+  #tip { position:absolute; pointer-events:none; background:var(--panel); border:1px solid var(--line);
+    border-radius:8px; padding:9px 11px; font-size:12px; max-width:260px; display:none; z-index:5;
+    box-shadow:0 8px 24px rgba(0,0,0,0.4); }
+  #tip .nm { font-weight:700; margin-bottom:2px; }
+  #tip .meta { color:var(--muted); font-size:11px; }
+  #tip .allies { margin-top:6px; padding-top:6px; border-top:1px solid var(--line); font-size:11px; }
+  #tip .allies .a { color:var(--text); }
+  #tip .allies .j { color:var(--muted); }
+
+  .hint { position:absolute; bottom:14px; right:18px; font-size:11px; color:var(--muted);
+    background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:7px 10px; }
+  #loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    color:var(--muted); font-size:14px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <header>
+    <h1>Louisiana's Donor Factions</h1>
+    <p class="sub">Each dot is a major political committee; a line joins two that <b>draw from the same donors</b>.
+       Thicker, shorter links = higher overlap (Jaccard), which controls for size so a giant committee
+       doesn't look allied with everyone. The layout pulls shared-donor allies together — clusters are
+       de-facto money factions. <b>Hover</b> a node, <b>click</b> to isolate its neighborhood.</p>
+  </header>
+  <div class="legend" id="legend"></div>
+  <div class="hint">scroll = zoom · drag = pan · click node = focus</div>
+  <div id="tip"></div>
+  <div id="loading">Loading the network…</div>
+</div>
+
+<script>
+const PARTY = {
+  DEM:{c:'#3b76e0',label:'Democrat'}, REP:{c:'#e0524d',label:'Republican'},
+  IND:{c:'#9b6bf0',label:'Independent'}, LBT:{c:'#d9a441',label:'Libertarian'},
+  GRN:{c:'#36a86f',label:'Green'}, OTH:{c:'#7d8b95',label:'Other / committee'},
+};
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d'), tip = document.getElementById('tip');
+let W, H, DPR = Math.min(window.devicePixelRatio||1, 2);
+function resize(){ W=window.innerWidth; H=window.innerHeight; cv.width=W*DPR; cv.height=H*DPR;
+  cv.style.width=W+'px'; cv.style.height=H+'px'; ctx.setTransform(DPR,0,0,DPR,0,0); }
+window.addEventListener('resize', () => { resize(); draw(); });
+resize();
+
+let nodes=[], edges=[], byId={}, adj={};
+let view={x:0,y:0,k:1}, alpha=1, focus=null, hover=null;
+
+fetch('./factions.json').then(r=>r.json()).then(data=>{
+  document.getElementById('loading').style.display='none';
+  nodes = data.nodes; edges = data.edges;
+  byId = Object.fromEntries(nodes.map(n=>[n.id,n]));
+  // radius by sqrt(raised); seed positions on a circle; build adjacency
+  const maxR = Math.max(...nodes.map(n=>n.raised||1));
+  nodes.forEach((n,i)=>{
+    n.r = 4 + 22*Math.sqrt((n.raised||1)/maxR);
+    // Seed on a ring of fixed radius + jitter — independent of viewport size, and
+    // never coincident (identical positions produce zero separating force).
+    const a = (i/nodes.length)*Math.PI*2;
+    n.x = Math.cos(a)*340 + (Math.random()-0.5)*60;
+    n.y = Math.sin(a)*340 + (Math.random()-0.5)*60;
+    n.vx=0; n.vy=0; adj[n.id]=[];
+  });
+  edges.forEach(e=>{ if(byId[e.a]&&byId[e.b]){ adj[e.a].push(e); adj[e.b].push(e); } });
+  view = { x:W/2, y:H/2, k:1 };
+  buildLegend(data);
+  requestAnimationFrame(tick);
+});
+
+function buildLegend(data){
+  const counts = {}; nodes.forEach(n=>counts[n.party]=(counts[n.party]||0)+1);
+  let html = Object.keys(PARTY).filter(p=>counts[p]).map(p =>
+    `<div class="row"><span class="dot" style="background:${PARTY[p].c}"></span>${PARTY[p].label} <span style="color:var(--muted)">(${counts[p]})</span></div>`).join('');
+  html += `<div class="stat">${nodes.length} committees · ${edges.length} shared-donor links</div>`;
+  html += `<div class="note">Top ${data.params.top} filers by lifetime raised; a link needs ≥${data.params.min_shared} shared donors and ≥${(data.params.min_jaccard*100).toFixed(0)}% overlap. Built ${data.generated}.</div>`;
+  document.getElementById('legend').innerHTML = html;
+}
+
+// ── force simulation ───────────────────────────────────────────────────────
+function step(){
+  const REP = 3200, CENTER = 0.045, DAMP = 0.86;
+  for(let i=0;i<nodes.length;i++){
+    const a=nodes[i];
+    for(let j=i+1;j<nodes.length;j++){
+      const b=nodes[j]; let dx=a.x-b.x, dy=a.y-b.y; let d2=dx*dx+dy*dy||0.01;
+      const f = REP/d2; const d=Math.sqrt(d2);
+      const fx=dx/d*f, fy=dy/d*f;
+      a.vx+=fx; a.vy+=fy; b.vx-=fx; b.vy-=fy;
+    }
+    a.vx -= a.x*CENTER; a.vy -= a.y*CENTER;   // gravity toward origin
+  }
+  edges.forEach(e=>{
+    const a=byId[e.a], b=byId[e.b]; if(!a||!b) return;
+    let dx=b.x-a.x, dy=b.y-a.y; const d=Math.sqrt(dx*dx+dy*dy)||0.01;
+    const ideal = 40 + 120*(1-e.jaccard);          // stronger overlap → shorter link
+    const k = 0.02 + 0.10*e.jaccard;
+    const f = (d-ideal)*k;
+    const fx=dx/d*f, fy=dy/d*f;
+    a.vx+=fx*alpha; a.vy+=fy*alpha; b.vx-=fx*alpha; b.vy-=fy*alpha;
+  });
+  nodes.forEach(n=>{ if(n===dragNode) return; n.vx*=DAMP; n.vy*=DAMP; n.x+=n.vx*alpha; n.y+=n.vy*alpha; });
+}
+function fitView(){
+  if(!nodes.length) return;
+  // Frame the 3rd–97th percentile so a few repulsion-flung outliers don't shrink
+  // the whole graph to a dot.
+  const pct=(arr,p)=>{ const s=[...arr].sort((a,b)=>a-b); return s[Math.floor((s.length-1)*p)]; };
+  const xs=nodes.map(n=>n.x), ys=nodes.map(n=>n.y);
+  const minX=pct(xs,0.03), maxX=pct(xs,0.97), minY=pct(ys,0.03), maxY=pct(ys,0.97);
+  const gw=(maxX-minX)||1, gh=(maxY-minY)||1, pad=80;
+  view.k = Math.max(0.25, Math.min((W-pad*2)/gw, (H-pad*2)/gh, 1.3));
+  view.x = W/2 - (minX+maxX)/2*view.k;
+  view.y = H/2 - (minY+maxY)/2*view.k;
+}
+let _needsDraw=false, _fitted=false;
+function tick(){
+  if(alpha>0.02){ step(); alpha*=0.992; } else alpha=0;
+  if(!_fitted && alpha>0 && alpha<0.35){ _fitted=true; fitView(); }   // frame the settled layout once
+  draw();
+  if(alpha>0 || _needsDraw){ _needsDraw=false; requestAnimationFrame(tick); }
+}
+function kick(){ if(alpha<0.05){ alpha=0.2; } _needsDraw=true; requestAnimationFrame(tick); }
+
+// ── rendering ──────────────────────────────────────────────────────────────
+function sx(n){ return view.x + n.x*view.k; }
+function sy(n){ return view.y + n.y*view.k; }
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const focusSet = focus ? new Set([focus.id, ...adj[focus.id].map(e=>e.a===focus.id?e.b:e.a)]) : null;
+  // edges
+  edges.forEach(e=>{
+    const a=byId[e.a], b=byId[e.b]; if(!a||!b) return;
+    const inFocus = !focusSet || (focusSet.has(e.a)&&focusSet.has(e.b)&&(e.a===focus.id||e.b===focus.id));
+    ctx.strokeStyle = inFocus ? `rgba(150,180,200,${0.25+e.jaccard*1.2})` : 'rgba(120,140,155,0.05)';
+    ctx.lineWidth = inFocus ? (0.5+e.jaccard*7) : 0.5;
+    ctx.beginPath(); ctx.moveTo(sx(a),sy(a)); ctx.lineTo(sx(b),sy(b)); ctx.stroke();
+  });
+  // nodes
+  nodes.forEach(n=>{
+    const dim = focusSet && !focusSet.has(n.id);
+    ctx.globalAlpha = dim ? 0.18 : 1;
+    ctx.beginPath(); ctx.arc(sx(n),sy(n), n.r*Math.sqrt(view.k), 0, Math.PI*2);
+    ctx.fillStyle = (PARTY[n.party]||PARTY.OTH).c; ctx.fill();
+    if(n===hover || n===focus){ ctx.lineWidth=2; ctx.strokeStyle='#fff'; ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  });
+  // labels: biggest few + hovered/focused neighborhood
+  ctx.font = '11px -apple-system,sans-serif'; ctx.fillStyle='#cfd9e0';
+  ctx.textAlign='center'; ctx.textBaseline='bottom';
+  const labelSet = new Set(nodes.slice(0,10).map(n=>n.id));
+  if(focus){ labelSet.add(focus.id); adj[focus.id].forEach(e=>labelSet.add(e.a===focus.id?e.b:e.a)); }
+  if(hover) labelSet.add(hover.id);
+  nodes.forEach(n=>{
+    if(!labelSet.has(n.id)) return;
+    if(focusSet && !focusSet.has(n.id)) return;
+    ctx.fillText(n.name.slice(0,26), sx(n), sy(n)-n.r*Math.sqrt(view.k)-3);
+  });
+}
+
+// ── interaction ────────────────────────────────────────────────────────────
+function nodeAt(px,py){
+  let best=null, bestD=Infinity;
+  for(const n of nodes){ const dx=px-sx(n), dy=py-sy(n); const d=dx*dx+dy*dy;
+    const rr=(n.r*Math.sqrt(view.k)+4)**2; if(d<rr && d<bestD){ best=n; bestD=d; } }
+  return best;
+}
+let dragNode=null, panning=false, last={x:0,y:0};
+cv.addEventListener('mousedown', ev=>{
+  const n = nodeAt(ev.clientX, ev.clientY);
+  if(n){ dragNode=n; } else { panning=true; cv.classList.add('grabbing'); }
+  last={x:ev.clientX,y:ev.clientY};
+});
+window.addEventListener('mousemove', ev=>{
+  if(dragNode){ dragNode.x=(ev.clientX-view.x)/view.k; dragNode.y=(ev.clientY-view.y)/view.k; dragNode.vx=dragNode.vy=0; kick(); return; }
+  if(panning){ view.x+=ev.clientX-last.x; view.y+=ev.clientY-last.y; last={x:ev.clientX,y:ev.clientY}; _needsDraw=true; requestAnimationFrame(tick); return; }
+  const n = nodeAt(ev.clientX, ev.clientY);
+  if(n!==hover){ hover=n; _needsDraw=true; requestAnimationFrame(tick); }
+  if(n) showTip(n, ev.clientX, ev.clientY); else tip.style.display='none';
+});
+window.addEventListener('mouseup', ()=>{ dragNode=null; panning=false; cv.classList.remove('grabbing'); });
+cv.addEventListener('click', ev=>{
+  if(Math.abs(ev.clientX-last.x)>4||Math.abs(ev.clientY-last.y)>4) return;
+  const n = nodeAt(ev.clientX, ev.clientY);
+  focus = (n===focus) ? null : n; _needsDraw=true; requestAnimationFrame(tick);
+});
+cv.addEventListener('wheel', ev=>{
+  ev.preventDefault();
+  const f = ev.deltaY<0 ? 1.12 : 1/1.12;
+  view.x = ev.clientX - (ev.clientX-view.x)*f;
+  view.y = ev.clientY - (ev.clientY-view.y)*f;
+  view.k *= f; _needsDraw=true; requestAnimationFrame(tick);
+}, {passive:false});
+
+function fmt(v){ return v>=1e6 ? '$'+(v/1e6).toFixed(1)+'M' : v>=1e3 ? '$'+(v/1e3).toFixed(0)+'K' : '$'+v; }
+function showTip(n, px, py){
+  const allies = adj[n.id].map(e=>({ o:byId[e.a===n.id?e.b:e.a], shared:e.shared, j:e.jaccard }))
+    .sort((a,b)=>b.j-a.j).slice(0,4);
+  tip.innerHTML = `<div class="nm">${n.name}</div>`+
+    `<div class="meta">${(PARTY[n.party]||PARTY.OTH).label} · raised ${fmt(n.raised)} from ${n.nDonors.toLocaleString()} donors</div>`+
+    (allies.length ? `<div class="allies">Shares donors with:<br>`+
+      allies.map(a=>`<span class="a">${a.o.name.slice(0,30)}</span> <span class="j">— ${a.shared} (${(a.j*100).toFixed(0)}%)</span>`).join('<br>')+`</div>` : '');
+  tip.style.display='block';
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  tip.style.left = Math.min(px+14, W-tw-10)+'px';
+  tip.style.top  = Math.min(py+14, H-th-10)+'px';
+}
+</script>
+</body>
+</html>
