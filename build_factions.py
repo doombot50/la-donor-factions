@@ -148,7 +148,16 @@ edges = [{'a': a, 'b': b, 'shared': sc, 'jaccard': j} for (a, b, sc, j) in keep]
 
 # Nodes that survive in at least one edge, with metadata for the viz.
 node_ids = {e['a'] for e in edges} | {e['b'] for e in edges}
+
+# Hand corrections for filers the raw contribution rows mislabel (the source
+# data tags each gift with a party and we take the most common, but a handful
+# of filers are recorded under the wrong one). Keyed by filerNumber.
+PARTY_OVERRIDE = {
+    '2009': 'REP',   # John C. (Jay) Morris, III — Republican LA state senator
+}
 def _party(fn):
+    if fn in PARTY_OVERRIDE:
+        return PARTY_OVERRIDE[fn]
     p = parties[fn].most_common(1)[0][0] if parties[fn] else 'OTH'
     return p if p in ('DEM', 'REP', 'IND', 'LBT', 'GRN') else 'OTH'
 nodes = [{
