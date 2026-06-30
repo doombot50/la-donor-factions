@@ -261,9 +261,11 @@ cv.addEventListener('touchmove', ev=>{
 }, {passive:false});
 cv.addEventListener('touchend', ev=>{
   if(ev.touches.length===0){
-    if(!touchMoved && !dragNode){               // a clean tap toggles focus
+    if(!touchMoved){               // a clean tap (even if it grabbed a node) toggles focus
       const n = nodeAt(tapStart.x, tapStart.y);
       focus = (n===focus) ? null : n;
+      hover = n;                   // no hover on touch, so a tap surfaces the tooltip
+      if(n) showTip(n, tapStart.x, tapStart.y); else tip.style.display='none';
     }
     dragNode=null; panning=false; pinchDist=0;
     _needsDraw=true; requestAnimationFrame(tick);
