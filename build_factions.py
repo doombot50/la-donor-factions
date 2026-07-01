@@ -97,8 +97,9 @@ for r in _rows():
 top = {fn for fn, _ in sorted(raised.items(), key=lambda x: -x[1])[:TOP_N]}
 print(f'Pass 1: {len(raised):,} filers; kept top {len(top)} by raised ({time.time()-t0:.0f}s)')
 
-# Pass 2: resolved-donor sets for the top filers + display name/party.
+# Pass 2: resolved-donor sets + per-donor dollars for the top filers + display name/party.
 donors  = defaultdict(set)        # filer -> {donor cluster id}
+dollars = defaultdict(dict)       # filer -> {donor cluster id: total $ given}
 names   = defaultdict(Counter)    # filer -> {candidate spelling: count}
 parties = defaultdict(Counter)    # filer -> {party: count}
 donor_to_filers = defaultdict(set)
@@ -115,6 +116,8 @@ for r in _rows():
         continue
     cid = donor_id(raw)
     donors[fn].add(cid)
+    d = dollars[fn]
+    d[cid] = d.get(cid, 0.0) + float(r.get('amount') or 0)
     donor_to_filers[cid].add(fn)
 print(f'Pass 2: donor sets built for {len(donors)} filers ({time.time()-t0:.0f}s)')
 
@@ -144,7 +147,25 @@ keep = set()
 for lst in by_node.values():
     for j, a, b, sc in sorted(lst, reverse=True)[:MAX_PER_NODE]:
         keep.add((a, b, sc, j))
-edges = [{'a': a, 'b': b, 'shared': sc, 'jaccard': j} for (a, b, sc, j) in keep]
+
+# Dollar-weighted Jaccard for surviving edges: Σ min($ to A, $ to B) over shared
+# donors, and Σ max over the donor union = total_A + total_B − Σ min. Weights the
+# overlap by how much money flows through it, so a bloc of small shared donors
+# doesn't read the same as a shared big-money base.
+dtotal = {fn: sum(d.values()) for fn, d in dollars.items()}
+def _dollar_weight(a, b):
+    da, db = dollars[a], dollars[b]
+    if len(db) < len(da):
+        da, db = db, da
+    smin = sum(min(v, db[cid]) for cid, v in da.items() if cid in db)
+    smax = dtotal.get(a, 0.0) + dtotal.get(b, 0.0) - smin
+    return smin, (smin / smax if smax > 0 else 0.0)
+
+edges = []
+for (a, b, sc, j) in keep:
+    sd, wj = _dollar_weight(a, b)
+    edges.append({'a': a, 'b': b, 'shared': sc, 'jaccard': j,
+                  'sharedDollars': round(sd), 'wjaccard': round(wj, 4)})
 
 # Nodes that survive in at least one edge, with metadata for the viz.
 node_ids = {e['a'] for e in edges} | {e['b'] for e in edges}
