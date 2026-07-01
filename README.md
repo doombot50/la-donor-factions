@@ -54,7 +54,15 @@ py -m http.server 8792 --directory .
 ```
 
 Hover a node for its party, money, and top shared-donor allies; click to isolate
-its neighborhood; scroll to zoom, drag to pan.
+its neighborhood; scroll to zoom, drag to pan. The search box (top right) flies to
+a committee by name, and focusing a node puts its filer id in the URL hash, so a
+link like `…/#1144` opens with that committee focused — shareable permalinks.
+
+The legend toggles between two colorings: **Party** (registered party of the filer)
+and **Faction** — blocs *discovered* from the money itself via Jaccard-weighted
+label propagation over the shared-donor graph, each named for its biggest member
+(e.g. the Gumbo PAC bloc). Click a faction row to spotlight just that bloc;
+<kbd>Esc</kbd> resets everything.
 
 ## Deploy (GitHub Pages)
 
@@ -74,7 +82,5 @@ it (step 1 above) and push whenever the underlying data refreshes.
 - **Candidates-only view:** the default includes major PACs and party committees
   (central hubs). A toggle could filter to filers that actually appeared on a ballot
   (join to the SoS election results) for a cleaner politician-only faction map.
-- **Community detection:** nodes are colored by party today; a Louvain/label-prop
-  pass could color by *discovered* cluster to name cross-party or intra-party blocs.
 - **Weighted overlap:** edges count shared donors equally; weighting by shared
   dollars would surface big-money alliances over small-dollar ones.
