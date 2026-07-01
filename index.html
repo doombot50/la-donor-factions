@@ -22,9 +22,22 @@
   .sub { margin:3px 0 0; font-size:12.5px; color:var(--muted); max-width:680px; line-height:1.5; }
   .sub b { color:var(--text); font-weight:600; }
 
+  #search { position:absolute; top:14px; right:18px; z-index:6; width:220px; max-width:46vw;
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    color:var(--text); padding:7px 10px; font-size:12.5px; outline:none; }
+  #search::placeholder { color:var(--muted); }
+  #search:focus { border-color:#3d5464; }
+
   .legend { position:absolute; bottom:14px; left:18px; background:var(--panel);
     border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-size:12px; }
+  .legend .modes { display:flex; gap:4px; margin-bottom:7px; }
+  .legend .modes button { flex:1; background:none; border:1px solid var(--line); border-radius:6px;
+    color:var(--muted); font:inherit; font-size:11px; padding:3px 8px; cursor:pointer; }
+  .legend .modes button.on { background:#22303a; color:var(--text); border-color:#3d5464; }
   .legend .row { display:flex; align-items:center; gap:7px; margin:3px 0; }
+  .legend .row.f { cursor:pointer; border-radius:5px; padding:1px 3px; margin:1px -3px; }
+  .legend .row.f:hover { background:#1d2933; }
+  .legend .row.f.sel { background:#22303a; }
   .dot { width:11px; height:11px; border-radius:50%; flex:0 0 auto; }
   .legend .note { color:var(--muted); margin-top:8px; max-width:230px; line-height:1.45; font-size:11px; }
   .legend .stat { color:var(--muted); margin-top:6px; font-size:11px; }
@@ -52,10 +65,13 @@
     <p class="sub">Each dot is a major political committee; a line joins two that <b>draw from the same donors</b>.
        Thicker, shorter links = higher overlap (Jaccard), which controls for size so a giant committee
        doesn't look allied with everyone. The layout pulls shared-donor allies together — clusters are
-       de-facto money factions. <b>Hover</b> a node, <b>click</b> to isolate its neighborhood.</p>
+       de-facto money factions. <b>Hover</b> a node, <b>click</b> to isolate its neighborhood,
+       or flip the legend to <b>Faction</b> to color by discovered bloc instead of party.</p>
   </header>
+  <input id="search" list="names" placeholder="Search committees…" autocomplete="off">
+  <datalist id="names"></datalist>
   <div class="legend" id="legend"></div>
-  <div class="hint">scroll / pinch = zoom · drag = pan · tap node = focus</div>
+  <div class="hint">scroll / pinch = zoom · drag = pan · tap node = focus · esc = reset</div>
   <div id="tip"></div>
   <div id="loading">Loading the network…</div>
 </div>
@@ -75,6 +91,8 @@ resize();
 
 let nodes=[], edges=[], byId={}, adj={};
 let view={x:0,y:0,k:1}, alpha=1, focus=null, hover=null;
+let META=null, colorMode='party', factions=[], factionOf={}, factionFocus=null;
+let pendingHash = decodeURIComponent(location.hash.slice(1)||'');
 
 fetch('./factions.json').then(r=>r.json()).then(data=>{
   document.getElementById('loading').style.display='none';
@@ -93,17 +111,111 @@ fetch('./factions.json').then(r=>r.json()).then(data=>{
   });
   edges.forEach(e=>{ if(byId[e.a]&&byId[e.b]){ adj[e.a].push(e); adj[e.b].push(e); } });
   view = { x:W/2, y:H/2, k:1 };
-  buildLegend(data);
+  META = data;
+  computeFactions();
+  buildLegend();
+  buildSearch();
   requestAnimationFrame(tick);
 });
 
-function buildLegend(data){
-  const counts = {}; nodes.forEach(n=>counts[n.party]=(counts[n.party]||0)+1);
-  let html = Object.keys(PARTY).filter(p=>counts[p]).map(p =>
-    `<div class="row"><span class="dot" style="background:${PARTY[p].c}"></span>${PARTY[p].label} <span style="color:var(--muted)">(${counts[p]})</span></div>`).join('');
+// ── faction detection ────────────────────────────────────────────────────────
+// Jaccard-weighted label propagation over the shared-donor graph: each node
+// repeatedly adopts the label carrying the most overlap among its neighbors.
+// The graph is small (~150 nodes), so this converges in a handful of sweeps.
+const FACTION_COLORS = ['#e0524d','#3b76e0','#36a86f','#d9a441','#9b6bf0','#4fc3d9',
+                        '#e07db8','#8fd94f','#e08b3b','#7a91e0','#5fd9a8','#c46be0'];
+function computeFactions(){
+  const label = {}; nodes.forEach(n=>label[n.id]=n.id);
+  for(let it=0; it<60; it++){
+    let changed = 0;
+    for(const n of nodes){
+      const w = {};
+      adj[n.id].forEach(e=>{ const o=e.a===n.id?e.b:e.a; w[label[o]]=(w[label[o]]||0)+e.jaccard; });
+      let best=label[n.id], bw=0;
+      for(const l in w) if(w[l]>bw || (w[l]===bw && l<best)){ bw=w[l]; best=l; }
+      if(bw>0 && best!==label[n.id]){ label[n.id]=best; changed++; }
+    }
+    if(!changed) break;
+  }
+  const groups = {};
+  nodes.forEach(n=>{ (groups[label[n.id]] = groups[label[n.id]]||[]).push(n); });
+  factions = Object.values(groups)
+    .map(m=>({ members:m, raised:m.reduce((s,n)=>s+(n.raised||0),0) }))
+    .sort((a,b)=>b.raised-a.raised);
+  let ci = 0;
+  factions.forEach((f,i)=>{
+    f.id = i;
+    f.color = (f.members.length>=3 && ci<FACTION_COLORS.length) ? FACTION_COLORS[ci++] : '#5b6a74';
+    const top = f.members.reduce((a,b)=>(b.raised||0)>(a.raised||0)?b:a);
+    f.name = f.members.length>1 ? top.name+' bloc' : top.name;
+    f.members.forEach(n=>factionOf[n.id]=f);
+  });
+}
+function nodeColor(n){
+  return colorMode==='party' ? (PARTY[n.party]||PARTY.OTH).c : factionOf[n.id].color;
+}
+
+function buildLegend(){
+  let html = `<div class="modes"><button id="mParty" class="${colorMode==='party'?'on':''}">Party</button>`+
+             `<button id="mFaction" class="${colorMode==='faction'?'on':''}">Faction</button></div>`;
+  if(colorMode==='party'){
+    const counts = {}; nodes.forEach(n=>counts[n.party]=(counts[n.party]||0)+1);
+    html += Object.keys(PARTY).filter(p=>counts[p]).map(p =>
+      `<div class="row"><span class="dot" style="background:${PARTY[p].c}"></span>${PARTY[p].label} <span style="color:var(--muted)">(${counts[p]})</span></div>`).join('');
+  } else {
+    const big = factions.filter(f=>f.members.length>=3).slice(0,10);
+    html += big.map(f =>
+      `<div class="row f ${factionFocus===f.id?'sel':''}" data-f="${f.id}"><span class="dot" style="background:${f.color}"></span>${f.name.slice(0,24)} <span style="color:var(--muted)">(${f.members.length})</span></div>`).join('');
+    const rest = nodes.length - big.reduce((s,f)=>s+f.members.length,0);
+    if(rest>0) html += `<div class="row"><span class="dot" style="background:#5b6a74"></span>smaller blocs <span style="color:var(--muted)">(${rest})</span></div>`;
+  }
   html += `<div class="stat">${nodes.length} committees · ${edges.length} shared-donor links</div>`;
-  html += `<div class="note">Top ${data.params.top} filers by lifetime raised; a link needs ≥${data.params.min_shared} shared donors and ≥${(data.params.min_jaccard*100).toFixed(0)}% overlap. Built ${data.generated}.</div>`;
-  document.getElementById('legend').innerHTML = html;
+  html += `<div class="note">Top ${META.params.top} filers by lifetime raised; a link needs ≥${META.params.min_shared} shared donors and ≥${(META.params.min_jaccard*100).toFixed(0)}% overlap. Built ${META.generated}.</div>`;
+  const legend = document.getElementById('legend');
+  legend.innerHTML = html;
+  document.getElementById('mParty').onclick   = ()=>setMode('party');
+  document.getElementById('mFaction').onclick = ()=>setMode('faction');
+  legend.querySelectorAll('.row.f').forEach(el=>el.onclick = ()=>{
+    const fid = +el.dataset.f;
+    factionFocus = (factionFocus===fid) ? null : fid;
+    buildLegend(); _needsDraw=true; requestAnimationFrame(tick);
+  });
+}
+function setMode(m){
+  colorMode = m; if(m==='party') factionFocus = null;
+  buildLegend(); _needsDraw=true; requestAnimationFrame(tick);
+}
+
+// ── search: type a committee name to fly to it ──────────────────────────────
+function buildSearch(){
+  document.getElementById('names').innerHTML =
+    nodes.map(n=>`<option value="${n.name.replace(/"/g,'&quot;')}">`).join('');
+  const inp = document.getElementById('search');
+  inp.addEventListener('change', ()=>{
+    const q = inp.value.trim().toLowerCase(); if(!q) return;
+    const n = nodes.find(x=>x.name.toLowerCase()===q) || nodes.find(x=>x.name.toLowerCase().includes(q));
+    if(n){
+      focus=n; hover=n; updateHash();
+      if(factionFocus!=null){ factionFocus=null; buildLegend(); }  // don't fly to a dimmed node
+      flyTo(n); inp.blur();
+    }
+  });
+}
+function flyTo(n){
+  const k = Math.max(view.k, 1.0);
+  const from = {x:view.x, y:view.y, k:view.k}, t0 = performance.now();
+  (function anim(t){
+    const p = Math.min(1, (t-t0)/450), e = p*(2-p);   // ease-out
+    const tx = W/2 - n.x*k, ty = H/2 - n.y*k;          // chase the node if it's still settling
+    view.x = from.x+(tx-from.x)*e; view.y = from.y+(ty-from.y)*e; view.k = from.k+(k-from.k)*e;
+    _needsDraw=true; requestAnimationFrame(tick);
+    if(p<1) requestAnimationFrame(anim);
+    else if(focus===n) showTip(n, sx(n), sy(n));
+  })(t0);
+}
+function updateHash(){
+  history.replaceState(null, '', focus ? '#'+encodeURIComponent(focus.id)
+                                       : location.pathname+location.search);
 }
 
 // ── force simulation ───────────────────────────────────────────────────────
@@ -145,7 +257,10 @@ function fitView(){
 let _needsDraw=false, _fitted=false;
 function tick(){
   if(alpha>0.02){ step(); alpha*=0.992; } else alpha=0;
-  if(!_fitted && alpha>0 && alpha<0.35){ _fitted=true; fitView(); }   // frame the settled layout once
+  if(!_fitted && alpha>0 && alpha<0.35){                              // frame the settled layout once
+    _fitted=true; fitView();
+    if(pendingHash){ const n=byId[pendingHash]; pendingHash=''; if(n){ focus=n; hover=n; flyTo(n); } }
+  }
   draw();
   if(alpha>0 || _needsDraw){ _needsDraw=false; requestAnimationFrame(tick); }
 }
@@ -157,20 +272,22 @@ function sy(n){ return view.y + n.y*view.k; }
 function draw(){
   ctx.clearRect(0,0,W,H);
   const focusSet = focus ? new Set([focus.id, ...adj[focus.id].map(e=>e.a===focus.id?e.b:e.a)]) : null;
+  const inFaction = id => factionFocus==null || factionOf[id].id===factionFocus;
   // edges
   edges.forEach(e=>{
     const a=byId[e.a], b=byId[e.b]; if(!a||!b) return;
-    const inFocus = !focusSet || (focusSet.has(e.a)&&focusSet.has(e.b)&&(e.a===focus.id||e.b===focus.id));
+    const inFocus = (!focusSet || (focusSet.has(e.a)&&focusSet.has(e.b)&&(e.a===focus.id||e.b===focus.id)))
+                    && inFaction(e.a) && inFaction(e.b);
     ctx.strokeStyle = inFocus ? `rgba(150,180,200,${0.25+e.jaccard*1.2})` : 'rgba(120,140,155,0.05)';
     ctx.lineWidth = inFocus ? (0.5+e.jaccard*7) : 0.5;
     ctx.beginPath(); ctx.moveTo(sx(a),sy(a)); ctx.lineTo(sx(b),sy(b)); ctx.stroke();
   });
   // nodes
   nodes.forEach(n=>{
-    const dim = focusSet && !focusSet.has(n.id);
+    const dim = (focusSet && !focusSet.has(n.id)) || !inFaction(n.id);
     ctx.globalAlpha = dim ? 0.18 : 1;
     ctx.beginPath(); ctx.arc(sx(n),sy(n), n.r*Math.sqrt(view.k), 0, Math.PI*2);
-    ctx.fillStyle = (PARTY[n.party]||PARTY.OTH).c; ctx.fill();
+    ctx.fillStyle = nodeColor(n); ctx.fill();
     if(n===hover || n===focus){ ctx.lineWidth=2; ctx.strokeStyle='#fff'; ctx.stroke(); }
     ctx.globalAlpha = 1;
   });
@@ -183,6 +300,7 @@ function draw(){
   nodes.forEach(n=>{
     if(!labelSet.has(n.id)) return;
     if(focusSet && !focusSet.has(n.id)) return;
+    if(!inFaction(n.id)) return;
     ctx.fillText(n.name.slice(0,26), sx(n), sy(n)-n.r*Math.sqrt(view.k)-3);
   });
 }
@@ -211,7 +329,13 @@ window.addEventListener('mouseup', ()=>{ dragNode=null; panning=false; cv.classL
 cv.addEventListener('click', ev=>{
   if(Math.abs(ev.clientX-last.x)>4||Math.abs(ev.clientY-last.y)>4) return;
   const n = nodeAt(ev.clientX, ev.clientY);
-  focus = (n===focus) ? null : n; _needsDraw=true; requestAnimationFrame(tick);
+  focus = (n===focus) ? null : n; updateHash(); _needsDraw=true; requestAnimationFrame(tick);
+});
+window.addEventListener('keydown', ev=>{
+  if(ev.key==='Escape'){
+    focus=null; hover=null; factionFocus=null; tip.style.display='none';
+    updateHash(); buildLegend(); _needsDraw=true; requestAnimationFrame(tick);
+  }
 });
 // Zoom by factor f, keeping the screen point (cx,cy) fixed.
 function zoomAt(cx, cy, f){
@@ -263,7 +387,7 @@ cv.addEventListener('touchend', ev=>{
   if(ev.touches.length===0){
     if(!touchMoved){               // a clean tap (even if it grabbed a node) toggles focus
       const n = nodeAt(tapStart.x, tapStart.y);
-      focus = (n===focus) ? null : n;
+      focus = (n===focus) ? null : n; updateHash();
       hover = n;                   // no hover on touch, so a tap surfaces the tooltip
       if(n) showTip(n, tapStart.x, tapStart.y); else tip.style.display='none';
     }
@@ -280,8 +404,10 @@ function fmt(v){ return v>=1e6 ? '$'+(v/1e6).toFixed(1)+'M' : v>=1e3 ? '$'+(v/1e
 function showTip(n, px, py){
   const allies = adj[n.id].map(e=>({ o:byId[e.a===n.id?e.b:e.a], shared:e.shared, j:e.jaccard }))
     .sort((a,b)=>b.j-a.j).slice(0,4);
+  const f = factionOf[n.id];
   tip.innerHTML = `<div class="nm">${n.name}</div>`+
-    `<div class="meta">${(PARTY[n.party]||PARTY.OTH).label} · raised ${fmt(n.raised)} from ${n.nDonors.toLocaleString()} donors</div>`+
+    `<div class="meta">${(PARTY[n.party]||PARTY.OTH).label} · raised ${fmt(n.raised)} from ${n.nDonors.toLocaleString()} donors`+
+    (f && f.members.length>1 ? `<br>${f.name} (${f.members.length} committees)` : '')+`</div>`+
     (allies.length ? `<div class="allies">Shares donors with:<br>`+
       allies.map(a=>`<span class="a">${a.o.name.slice(0,30)}</span> <span class="j">— ${a.shared} (${(a.j*100).toFixed(0)}%)</span>`).join('<br>')+`</div>` : '');
   tip.style.display='block';
