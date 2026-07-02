@@ -92,6 +92,9 @@ resize();
 let nodes=[], edges=[], byId={}, adj={};
 let view={x:0,y:0,k:1}, alpha=1, focus=null, hover=null;
 let META=null, colorMode='party', factions=[], factionOf={}, factionFocus=null;
+let weightMode='donors';   // 'donors' (count Jaccard) | 'dollars' (weighted Jaccard)
+// Edge weight under the active mode; old factions.json without wjaccard falls back.
+function ew(e){ return weightMode==='dollars' && e.wjaccard!=null ? e.wjaccard : e.jaccard; }
 let pendingHash = decodeURIComponent(location.hash.slice(1)||'');
 
 fetch('./factions.json').then(r=>r.json()).then(data=>{
@@ -125,12 +128,13 @@ fetch('./factions.json').then(r=>r.json()).then(data=>{
 const FACTION_COLORS = ['#e0524d','#3b76e0','#36a86f','#d9a441','#9b6bf0','#4fc3d9',
                         '#e07db8','#8fd94f','#e08b3b','#7a91e0','#5fd9a8','#c46be0'];
 function computeFactions(){
+  factionOf = {};
   const label = {}; nodes.forEach(n=>label[n.id]=n.id);
   for(let it=0; it<60; it++){
     let changed = 0;
     for(const n of nodes){
       const w = {};
-      adj[n.id].forEach(e=>{ const o=e.a===n.id?e.b:e.a; w[label[o]]=(w[label[o]]||0)+e.jaccard; });
+      adj[n.id].forEach(e=>{ const o=e.a===n.id?e.b:e.a; w[label[o]]=(w[label[o]]||0)+ew(e); });
       let best=label[n.id], bw=0;
       for(const l in w) if(w[l]>bw || (w[l]===bw && l<best)){ bw=w[l]; best=l; }
       if(bw>0 && best!==label[n.id]){ label[n.id]=best; changed++; }
@@ -156,8 +160,11 @@ function nodeColor(n){
 }
 
 function buildLegend(){
+  const hasW = edges.some(e=>e.wjaccard!=null);
   let html = `<div class="modes"><button id="mParty" class="${colorMode==='party'?'on':''}">Party</button>`+
              `<button id="mFaction" class="${colorMode==='faction'?'on':''}">Faction</button></div>`;
+  if(hasW) html += `<div class="modes"><button id="wDonors" class="${weightMode==='donors'?'on':''}">Weight: donors</button>`+
+                   `<button id="wDollars" class="${weightMode==='dollars'?'on':''}">dollars</button></div>`;
   if(colorMode==='party'){
     const counts = {}; nodes.forEach(n=>counts[n.party]=(counts[n.party]||0)+1);
     html += Object.keys(PARTY).filter(p=>counts[p]).map(p =>
@@ -175,6 +182,10 @@ function buildLegend(){
   legend.innerHTML = html;
   document.getElementById('mParty').onclick   = ()=>setMode('party');
   document.getElementById('mFaction').onclick = ()=>setMode('faction');
+  if(hasW){
+    document.getElementById('wDonors').onclick  = ()=>setWeight('donors');
+    document.getElementById('wDollars').onclick = ()=>setWeight('dollars');
+  }
   legend.querySelectorAll('.row.f').forEach(el=>el.onclick = ()=>{
     const fid = +el.dataset.f;
     factionFocus = (factionFocus===fid) ? null : fid;
@@ -184,6 +195,16 @@ function buildLegend(){
 function setMode(m){
   colorMode = m; if(m==='party') factionFocus = null;
   buildLegend(); _needsDraw=true; requestAnimationFrame(tick);
+}
+function setWeight(m){
+  if(m===weightMode) return;
+  weightMode = m; factionFocus = null;
+  computeFactions();                       // blocs follow the active weights
+  buildLegend();
+  alpha = Math.max(alpha, 0.6);                    // re-settle springs...
+  _fitted = false; _settledFit = false; _userView = false;   // ...then refit the view
+  if(hover) showTip(hover, sx(hover), sy(hover));
+  _needsDraw=true; requestAnimationFrame(tick);
 }
 
 // ── search: type a committee name to fly to it ──────────────────────────────
@@ -220,7 +241,9 @@ function updateHash(){
 
 // ── force simulation ───────────────────────────────────────────────────────
 function step(){
-  const REP = 3200, CENTER = 0.045, DAMP = 0.86;
+  // Repulsion scales with node count so a wider net (400+ filers) spreads out
+  // instead of packing into a ball at the ~250-node equilibrium spacing.
+  const REP = 3200*Math.max(1, nodes.length/250), CENTER = 0.045, DAMP = 0.86;
   for(let i=0;i<nodes.length;i++){
     const a=nodes[i];
     for(let j=i+1;j<nodes.length;j++){
@@ -234,8 +257,9 @@ function step(){
   edges.forEach(e=>{
     const a=byId[e.a], b=byId[e.b]; if(!a||!b) return;
     let dx=b.x-a.x, dy=b.y-a.y; const d=Math.sqrt(dx*dx+dy*dy)||0.01;
-    const ideal = 40 + 120*(1-e.jaccard);          // stronger overlap → shorter link
-    const k = 0.02 + 0.10*e.jaccard;
+    const w = ew(e);
+    const ideal = 40 + 120*(1-w);                  // stronger overlap → shorter link
+    const k = 0.02 + 0.10*w;
     const f = (d-ideal)*k;
     const fx=dx/d*f, fy=dy/d*f;
     a.vx+=fx*alpha; a.vy+=fy*alpha; b.vx-=fx*alpha; b.vy-=fy*alpha;
@@ -254,12 +278,19 @@ function fitView(){
   view.x = W/2 - (minX+maxX)/2*view.k;
   view.y = H/2 - (minY+maxY)/2*view.k;
 }
-let _needsDraw=false, _fitted=false;
+let _needsDraw=false, _fitted=false, _settledFit=false, _userView=false;
 function tick(){
+  const wasLive = alpha>0;
   if(alpha>0.02){ step(); alpha*=0.992; } else alpha=0;
   if(!_fitted && alpha>0 && alpha<0.35){                              // frame the settled layout once
     _fitted=true; fitView();
     if(pendingHash){ const n=byId[pendingHash]; pendingHash=''; if(n){ focus=n; hover=n; flyTo(n); } }
+  }
+  if(wasLive && alpha===0 && !_settledFit){
+    // The layout keeps contracting well after the first fit (the early frames
+    // fling nodes outward); reframe the truly settled graph — unless the user
+    // has already taken over the viewport.
+    _settledFit=true; if(!_userView) fitView();
   }
   draw();
   if(alpha>0 || _needsDraw){ _needsDraw=false; requestAnimationFrame(tick); }
@@ -273,13 +304,17 @@ function draw(){
   ctx.clearRect(0,0,W,H);
   const focusSet = focus ? new Set([focus.id, ...adj[focus.id].map(e=>e.a===focus.id?e.b:e.a)]) : null;
   const inFaction = id => factionFocus==null || factionOf[id].id===factionFocus;
+  // With a wider net the mesh of weak links can drown the picture — scale the
+  // resting edge opacity down as the edge count grows (≤500 edges: unchanged).
+  const edim = Math.min(1, 500/(edges.length||1));
   // edges
   edges.forEach(e=>{
     const a=byId[e.a], b=byId[e.b]; if(!a||!b) return;
     const inFocus = (!focusSet || (focusSet.has(e.a)&&focusSet.has(e.b)&&(e.a===focus.id||e.b===focus.id)))
                     && inFaction(e.a) && inFaction(e.b);
-    ctx.strokeStyle = inFocus ? `rgba(150,180,200,${0.25+e.jaccard*1.2})` : 'rgba(120,140,155,0.05)';
-    ctx.lineWidth = inFocus ? (0.5+e.jaccard*7) : 0.5;
+    const w = ew(e);
+    ctx.strokeStyle = inFocus ? `rgba(150,180,200,${(0.25+w*1.2)*(focusSet?1:edim)})` : 'rgba(120,140,155,0.05)';
+    ctx.lineWidth = inFocus ? (0.5+w*7) : 0.5;
     ctx.beginPath(); ctx.moveTo(sx(a),sy(a)); ctx.lineTo(sx(b),sy(b)); ctx.stroke();
   });
   // nodes
@@ -320,7 +355,7 @@ cv.addEventListener('mousedown', ev=>{
 });
 window.addEventListener('mousemove', ev=>{
   if(dragNode){ dragNode.x=(ev.clientX-view.x)/view.k; dragNode.y=(ev.clientY-view.y)/view.k; dragNode.vx=dragNode.vy=0; kick(); return; }
-  if(panning){ view.x+=ev.clientX-last.x; view.y+=ev.clientY-last.y; last={x:ev.clientX,y:ev.clientY}; _needsDraw=true; requestAnimationFrame(tick); return; }
+  if(panning){ _userView=true; view.x+=ev.clientX-last.x; view.y+=ev.clientY-last.y; last={x:ev.clientX,y:ev.clientY}; _needsDraw=true; requestAnimationFrame(tick); return; }
   const n = nodeAt(ev.clientX, ev.clientY);
   if(n!==hover){ hover=n; _needsDraw=true; requestAnimationFrame(tick); }
   if(n) showTip(n, ev.clientX, ev.clientY); else tip.style.display='none';
@@ -339,6 +374,7 @@ window.addEventListener('keydown', ev=>{
 });
 // Zoom by factor f, keeping the screen point (cx,cy) fixed.
 function zoomAt(cx, cy, f){
+  _userView=true;
   view.x = cx - (cx-view.x)*f;
   view.y = cy - (cy-view.y)*f;
   view.k *= f; _needsDraw=true; requestAnimationFrame(tick);
@@ -379,7 +415,7 @@ cv.addEventListener('touchmove', ev=>{
     const x=t[0].clientX, y=t[0].clientY;
     if(Math.abs(x-tapStart.x)>4||Math.abs(y-tapStart.y)>4) touchMoved=true;
     if(dragNode){ dragNode.x=(x-view.x)/view.k; dragNode.y=(y-view.y)/view.k; dragNode.vx=dragNode.vy=0; kick(); }
-    else if(panning){ view.x+=x-last.x; view.y+=y-last.y; _needsDraw=true; requestAnimationFrame(tick); }
+    else if(panning){ _userView=true; view.x+=x-last.x; view.y+=y-last.y; _needsDraw=true; requestAnimationFrame(tick); }
     last={x,y};
   }
 }, {passive:false});
@@ -402,14 +438,14 @@ cv.addEventListener('touchend', ev=>{
 
 function fmt(v){ return v>=1e6 ? '$'+(v/1e6).toFixed(1)+'M' : v>=1e3 ? '$'+(v/1e3).toFixed(0)+'K' : '$'+v; }
 function showTip(n, px, py){
-  const allies = adj[n.id].map(e=>({ o:byId[e.a===n.id?e.b:e.a], shared:e.shared, j:e.jaccard }))
+  const allies = adj[n.id].map(e=>({ o:byId[e.a===n.id?e.b:e.a], shared:e.shared, sd:e.sharedDollars, j:ew(e) }))
     .sort((a,b)=>b.j-a.j).slice(0,4);
   const f = factionOf[n.id];
   tip.innerHTML = `<div class="nm">${n.name}</div>`+
     `<div class="meta">${(PARTY[n.party]||PARTY.OTH).label} · raised ${fmt(n.raised)} from ${n.nDonors.toLocaleString()} donors`+
     (f && f.members.length>1 ? `<br>${f.name} (${f.members.length} committees)` : '')+`</div>`+
     (allies.length ? `<div class="allies">Shares donors with:<br>`+
-      allies.map(a=>`<span class="a">${a.o.name.slice(0,30)}</span> <span class="j">— ${a.shared} (${(a.j*100).toFixed(0)}%)</span>`).join('<br>')+`</div>` : '');
+      allies.map(a=>`<span class="a">${a.o.name.slice(0,30)}</span> <span class="j">— ${a.shared}${a.sd!=null?' · '+fmt(a.sd):''} (${(a.j*100).toFixed(0)}%)</span>`).join('<br>')+`</div>` : '');
   tip.style.display='block';
   const tw = tip.offsetWidth, th = tip.offsetHeight;
   tip.style.left = Math.min(px+14, W-tw-10)+'px';
