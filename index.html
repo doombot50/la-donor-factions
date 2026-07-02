@@ -142,13 +142,14 @@ fetch('./factions.json').then(r=>r.json()).then(data=>{
 // Jaccard-weighted label propagation over the shared-donor graph: each node
 // repeatedly adopts the label carrying the most overlap among its neighbors.
 // The graph is small (~150 nodes), so this converges in a handful of sweeps.
-// Bloc colors respect party lean: a ≥⅔-Democratic faction draws from the cool
-// family, ≥⅔-Republican from the warm one, mixed/nonpartisan from neutrals —
-// so a Dem bloc never reads red (or a GOP bloc blue).
+// Bloc colors stay colorful, with one rule: red and blue are spoken for as
+// Republican and Democrat, so a ≥⅔-Democratic faction never draws a warm red
+// and a ≥⅔-Republican one never draws a blue. Mixed blocs get the full vivid
+// range, and overflow borrows leftover partisan hues before falling to grey.
 const FACTION_COLORS = {
   REP: ['#e0524d','#e08b3b','#e07db8','#b8434f','#e8a07a'],
   DEM: ['#3b76e0','#4fc3d9','#7a91e0','#2fa3a0','#5fd9a8'],
-  MIX: ['#36a86f','#c46be0','#8fd94f','#b5895a','#9aa53c','#a586c9','#4d9e83','#7d8b95'],
+  MIX: ['#9b6bf0','#36a86f','#e0b23f','#c46be0','#8fd94f','#4d9e83','#b5895a','#a586c9','#7d8b95'],
 };
 function factionLean(m){
   const nr=m.filter(n=>n.party==='REP').length, nd=m.filter(n=>n.party==='DEM').length;
@@ -177,10 +178,12 @@ function computeFactions(){
   factions.forEach((f,i)=>{
     f.id = i;
     f.lean = factionLean(f.members);
-    const pool = pools[f.lean||'MIX'];
-    f.color = f.members.length>=3
-      ? (pool.length ? pool.shift() : (pools.MIX.length ? pools.MIX.shift() : '#5b6a74'))
-      : '#5b6a74';
+    let pool = pools[f.lean||'MIX'];
+    // mixed blocs may borrow leftover partisan hues; partisan blocs may take
+    // neutrals, but never the other side's family
+    if(!pool.length && !f.lean) pool = pools.REP.length>=pools.DEM.length ? pools.REP : pools.DEM;
+    if(!pool.length) pool = pools.MIX;
+    f.color = (f.members.length>=3 && pool.length) ? pool.shift() : '#5b6a74';
     f.members.forEach(n=>factionOf[n.id]=f);
   });
   factions.forEach(f=>{ f.hub = hubOf(f); f.name = factionName(f); });
