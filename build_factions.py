@@ -98,13 +98,41 @@ _OFFICE_RULES = [   # first match wins; checked against the uppercased office
     ('SHERIFF', 'Sheriff'), ('DISTRICT ATTORNEY', 'DA'),
     ('JUSTICE', 'Judge'), ('JUDGE', 'Judge'), ('MAYOR', 'Mayor'),
 ]
+# Committee names carry middle initials the ballot drops (and vice versa):
+# "John Alario, Jr." vs "JOHN A. ALARIO, JR.". A (canonical first, last) key
+# bridges them — used only when it maps to exactly one ballot name.
+_NICK = {
+    'CHUCK': 'CHARLES', 'CHARLIE': 'CHARLES', 'DAN': 'DANIEL', 'DANNY': 'DANIEL',
+    'BOB': 'ROBERT', 'BOBBY': 'ROBERT', 'ROB': 'ROBERT', 'JIM': 'JAMES', 'JIMMY': 'JAMES',
+    'BILL': 'WILLIAM', 'BILLY': 'WILLIAM', 'WILL': 'WILLIAM', 'MIKE': 'MICHAEL',
+    'TOM': 'THOMAS', 'TOMMY': 'THOMAS', 'JOE': 'JOSEPH', 'JOEY': 'JOSEPH',
+    'STEVE': 'STEPHEN', 'DAVE': 'DAVID', 'DON': 'DONALD', 'DONNIE': 'DONALD',
+    'RICK': 'RICHARD', 'RICKY': 'RICHARD', 'RITCHIE': 'RICHARD', 'DICK': 'RICHARD',
+    'TONY': 'ANTHONY', 'ED': 'EDWARD', 'EDDIE': 'EDWARD', 'GREG': 'GREGORY',
+    'BEN': 'BENJAMIN', 'SAM': 'SAMUEL', 'SAMMY': 'SAMUEL', 'PAT': 'PATRICK',
+    'NICK': 'NICHOLAS', 'ANDY': 'ANDREW', 'DREW': 'ANDREW', 'JEFF': 'JEFFREY',
+    'KEN': 'KENNETH', 'KENNY': 'KENNETH', 'RON': 'RONALD', 'RONNIE': 'RONALD',
+    'LARRY': 'LAWRENCE', 'JERRY': 'GERALD', 'GERRY': 'GERALD', 'WALT': 'WALTER',
+    'ALEX': 'ALEXANDER', 'CHRIS': 'CHRISTOPHER', 'MATT': 'MATTHEW',
+    'FRED': 'FREDERICK', 'FREDDIE': 'FREDERICK', 'STEVEN': 'STEPHEN',
+    'LIZ': 'ELIZABETH', 'BETH': 'ELIZABETH', 'BETSY': 'ELIZABETH',
+}
+def _canon_first(tok):
+    return _NICK.get(tok, tok)
+
 def load_offices():
     for p in (os.path.join(CACHE, '..', 'la_candidacies_raw.json.gz'),
               os.path.join(CACHE, 'la_candidacies_raw.json.gz')):
         if os.path.exists(p):
             with gzip.open(p, 'rt', encoding='utf-8') as f:
                 cand = json.load(f)
-            return {_norm_name(k): v for k, v in cand.items()}
+            exact = {_norm_name(k): v for k, v in cand.items()}
+            fl = {}
+            for k in exact:
+                t = k.split()
+                if len(t) >= 2:
+                    fl.setdefault((_canon_first(t[0]), t[-1]), set()).add(k)
+            return exact, fl
     print('  note: la_candidacies_raw.json.gz absent — nodes ship without offices')
     return None
 
@@ -118,16 +146,36 @@ def _classify(office):
     return 'Local office'
 
 def office_of(display_name, offices):
+    """Each stage falls through when it yields no *classifiable* office — an
+    exact ballot-name hit that only holds party-committee posts must not mask
+    a middle-initial variant that carries the real office."""
     if not offices:
         return None
-    rows = offices.get(_norm_name(display_name))
-    if rows is None:
-        # ballots use nicknames: "John L. (Jay) Dardenne" appears as "Jay Dardenne"
-        m = re.match(r'^.*?\(([^)]+)\)(.*)$', display_name)
-        if m:
-            rows = offices.get(_norm_name(m.group(1) + ' ' + m.group(2)))
-    if not rows:
-        return None
+    exact, fl = offices
+    norm = _norm_name(display_name)
+    cls = _office_class(exact.get(norm) or [])
+    if cls:
+        return cls
+    # ballots use nicknames: "John L. (Jay) Dardenne" appears as "Jay Dardenne"
+    m = re.match(r'^.*?\(([^)]+)\)(.*)$', display_name)
+    if m:
+        cls = _office_class(exact.get(_norm_name(m.group(1) + ' ' + m.group(2))) or [])
+        if cls:
+            return cls
+    # middle-initial / nickname drift: match on (canonical first, last).
+    # Several ballot spellings may share the key (one person's variants, or
+    # rarely two people) — accept when they all classify the same anyway.
+    t = norm.split()
+    if len(t) >= 2:
+        ks = fl.get((_canon_first(t[0]), t[-1]))
+        if ks:
+            classes = {_office_class(exact[k]) for k in ks}
+            classes.discard(None)
+            if len(classes) == 1:
+                return classes.pop()
+    return None
+
+def _office_class(rows):
     dated = []
     for r in rows:
         if r.get('party_office'):
