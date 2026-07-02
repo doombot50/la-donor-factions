@@ -74,6 +74,73 @@ raw2cid = load_donor_map()
 def donor_id(raw_upper):
     return raw2cid.get(raw_upper, raw_upper) if raw2cid else raw_upper
 
+# ── office lookup ───────────────────────────────────────────────────────────
+# SoS candidacies (campaign-finance repo, committed at its root — the cache's
+# parent) tell us what office a committee's candidate ran for. The viz names
+# factions by their dominant office class ("Sheriffs", "Republican
+# legislators"), which beats naming a bloc after whichever member raised most.
+import re
+def _norm_name(name):
+    n = name.upper()
+    n = re.sub(r'\b(DR|MR|MRS|MS|JR|SR|II|III|IV|ESQ|PHD|MD)\.?\b', '', n)
+    n = re.sub(r'[^A-Z\s]', ' ', n)
+    return ' '.join(n.split())
+
+_OFFICE_RULES = [   # first match wins; checked against the uppercased office
+    ('LIEUTENANT GOVERNOR', 'Lt. Governor'), ('GOVERNOR', 'Governor'),
+    ('ATTORNEY GENERAL', 'Atty. General'), ('SECRETARY OF STATE', 'Sec. of State'),
+    ('TREASURER', 'Treasurer'), ('AGRICULTURE', 'Ag. Commissioner'),
+    ('INSURANCE', 'Ins. Commissioner'), ('ELECTIONS', 'Elections Comm.'),
+    ('PUBLIC SERVICE', 'PSC'), ('BESE', 'BESE'), ('ELEMENTARY AND SECONDARY', 'BESE'),
+    ('U. S. SENAT', 'U.S. Senate'), ('US SENAT', 'U.S. Senate'),
+    ('U. S. REP', 'U.S. House'), ('US REP', 'U.S. House'), ('CONGRESS', 'U.S. House'),
+    ('STATE SENATOR', 'State Senate'), ('STATE REPRESENTATIVE', 'State House'),
+    ('SHERIFF', 'Sheriff'), ('DISTRICT ATTORNEY', 'DA'),
+    ('JUSTICE', 'Judge'), ('JUDGE', 'Judge'), ('MAYOR', 'Mayor'),
+]
+def load_offices():
+    for p in (os.path.join(CACHE, '..', 'la_candidacies_raw.json.gz'),
+              os.path.join(CACHE, 'la_candidacies_raw.json.gz')):
+        if os.path.exists(p):
+            with gzip.open(p, 'rt', encoding='utf-8') as f:
+                cand = json.load(f)
+            return {_norm_name(k): v for k, v in cand.items()}
+    print('  note: la_candidacies_raw.json.gz absent — nodes ship without offices')
+    return None
+
+def _classify(office):
+    o = (office or '').split('--')[0].strip().upper()
+    if 'PRESIDENT' in o:
+        return None
+    for pat, label in _OFFICE_RULES:
+        if pat in o:
+            return label
+    return 'Local office'
+
+def office_of(display_name, offices):
+    if not offices:
+        return None
+    rows = offices.get(_norm_name(display_name))
+    if rows is None:
+        # ballots use nicknames: "John L. (Jay) Dardenne" appears as "Jay Dardenne"
+        m = re.match(r'^.*?\(([^)]+)\)(.*)$', display_name)
+        if m:
+            rows = offices.get(_norm_name(m.group(1) + ' ' + m.group(2)))
+    if not rows:
+        return None
+    dated = []
+    for r in rows:
+        if r.get('party_office'):
+            continue
+        cls = _classify(r.get('office'))
+        if not cls:
+            continue
+        mdy = (r.get('date') or '').split('/')
+        key = (mdy[2], mdy[0], mdy[1]) if len(mdy) == 3 else ('', '', '')
+        dated.append((key, cls))
+    # the most recent run is who they are now (legislator -> judge => Judge)
+    return max(dated)[1] if dated else None
+
 def _rows():
     for path in sorted(glob.glob(os.path.join(CACHE, 'contributions_yr*.json.gz'))):
         with gzip.open(path, 'rt', encoding='utf-8') as f:
@@ -181,13 +248,21 @@ def _party(fn):
         return PARTY_OVERRIDE[fn]
     p = parties[fn].most_common(1)[0][0] if parties[fn] else 'OTH'
     return p if p in ('DEM', 'REP', 'IND', 'LBT', 'GRN') else 'OTH'
-nodes = [{
-    'id': fn,
-    'name': (names[fn].most_common(1)[0][0] if names[fn] else f'Filer {fn}'),
-    'party': _party(fn),
-    'raised': round(raised[fn]),
-    'nDonors': len(donors[fn]),
-} for fn in sorted(node_ids, key=lambda f: -raised[f])]
+offices = load_offices()
+nodes = []
+for fn in sorted(node_ids, key=lambda f: -raised[f]):
+    name = names[fn].most_common(1)[0][0] if names[fn] else f'Filer {fn}'
+    n = {
+        'id': fn,
+        'name': name,
+        'party': _party(fn),
+        'raised': round(raised[fn]),
+        'nDonors': len(donors[fn]),
+    }
+    office = office_of(name, offices)
+    if office:
+        n['office'] = office
+    nodes.append(n)
 
 out = {
     'generated': time.strftime('%Y-%m-%d'),

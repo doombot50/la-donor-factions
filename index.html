@@ -142,8 +142,18 @@ fetch('./factions.json').then(r=>r.json()).then(data=>{
 // Jaccard-weighted label propagation over the shared-donor graph: each node
 // repeatedly adopts the label carrying the most overlap among its neighbors.
 // The graph is small (~150 nodes), so this converges in a handful of sweeps.
-const FACTION_COLORS = ['#e0524d','#3b76e0','#36a86f','#d9a441','#9b6bf0','#4fc3d9',
-                        '#e07db8','#8fd94f','#e08b3b','#7a91e0','#5fd9a8','#c46be0'];
+// Bloc colors respect party lean: a ≥⅔-Democratic faction draws from the cool
+// family, ≥⅔-Republican from the warm one, mixed/nonpartisan from neutrals —
+// so a Dem bloc never reads red (or a GOP bloc blue).
+const FACTION_COLORS = {
+  REP: ['#e0524d','#e08b3b','#e07db8','#b8434f','#e8a07a'],
+  DEM: ['#3b76e0','#4fc3d9','#7a91e0','#2fa3a0','#5fd9a8'],
+  MIX: ['#36a86f','#c46be0','#8fd94f','#b5895a','#9aa53c','#a586c9','#4d9e83','#7d8b95'],
+};
+function factionLean(m){
+  const nr=m.filter(n=>n.party==='REP').length, nd=m.filter(n=>n.party==='DEM').length;
+  return nr>=m.length*2/3 ? 'REP' : nd>=m.length*2/3 ? 'DEM' : null;
+}
 function computeFactions(){
   factionOf = {};
   const label = {}; nodes.forEach(n=>label[n.id]=n.id);
@@ -163,14 +173,55 @@ function computeFactions(){
   factions = Object.values(groups)
     .map(m=>({ members:m, raised:m.reduce((s,n)=>s+(n.raised||0),0) }))
     .sort((a,b)=>b.raised-a.raised);
-  let ci = 0;
+  const pools = { REP:[...FACTION_COLORS.REP], DEM:[...FACTION_COLORS.DEM], MIX:[...FACTION_COLORS.MIX] };
   factions.forEach((f,i)=>{
     f.id = i;
-    f.color = (f.members.length>=3 && ci<FACTION_COLORS.length) ? FACTION_COLORS[ci++] : '#5b6a74';
-    const top = f.members.reduce((a,b)=>(b.raised||0)>(a.raised||0)?b:a);
-    f.name = f.members.length>1 ? top.name+' bloc' : top.name;
+    f.lean = factionLean(f.members);
+    const pool = pools[f.lean||'MIX'];
+    f.color = f.members.length>=3
+      ? (pool.length ? pool.shift() : (pools.MIX.length ? pools.MIX.shift() : '#5b6a74'))
+      : '#5b6a74';
     f.members.forEach(n=>factionOf[n.id]=f);
   });
+  factions.forEach(f=>{ f.hub = hubOf(f); f.name = factionName(f); });
+  // Two "Sheriffs" blocs would be indistinguishable — tag each with its hub.
+  const cnt = {}; factions.forEach(f=>cnt[f.name]=(cnt[f.name]||0)+1);
+  factions.forEach(f=>{ if(cnt[f.name]>1 && f.members.length>1) f.name += ' · '+f.hub.name.split(' ').pop(); });
+}
+
+// ── faction naming ──────────────────────────────────────────────────────────
+// A bloc is named by its story, not its richest member: when at least half its
+// members hold the same class of office it's "Sheriffs" / "Republican
+// legislators" (party prefixed when ≥⅔ share one). Otherwise — statewide
+// personalities, PAC networks — fall back to an eponym, anchored on the HUB:
+// the member most connected (by the active edge weight) to the rest of the
+// bloc, i.e. what actually holds it together.
+const OFFICE_GROUP = {
+  'State House':'legislators', 'State Senate':'legislators',
+  'Sheriff':'sheriffs', 'Judge':'judges', 'DA':'DAs', 'Mayor':'mayors',
+  'Local office':'local officials',
+  'U.S. House':'members of Congress', 'U.S. Senate':'members of Congress',
+};
+function hubOf(f){
+  let best=f.members[0], bw=-1;
+  for(const n of f.members){
+    let w=0;
+    adj[n.id].forEach(e=>{ const o=e.a===n.id?e.b:e.a; if(factionOf[o]===f) w+=ew(e); });
+    if(w>bw || (w===bw && (n.raised||0)>(best.raised||0))){ bw=w; best=n; }
+  }
+  return best;
+}
+function factionName(f){
+  const m=f.members;
+  if(m.length===1) return m[0].name;
+  const gc={}; m.forEach(n=>{ const g=OFFICE_GROUP[n.office]; if(g) gc[g]=(gc[g]||0)+1; });
+  let g=null, gn=0; for(const k in gc) if(gc[k]>gn){ gn=gc[k]; g=k; }
+  if(g && gn>=Math.max(2, m.length/2)){
+    const lean = factionLean(m);
+    const party = lean==='REP' ? 'Republican ' : lean==='DEM' ? 'Democratic ' : '';
+    return party ? party+g : g[0].toUpperCase()+g.slice(1);
+  }
+  return f.hub.name+' bloc';
 }
 function nodeColor(n){
   return colorMode==='party' ? (PARTY[n.party]||PARTY.OTH).c : factionOf[n.id].color;
@@ -189,7 +240,7 @@ function buildLegend(){
   } else {
     const big = factions.filter(f=>f.members.length>=3).slice(0,10);
     html += big.map(f =>
-      `<div class="row f ${factionFocus===f.id?'sel':''}" data-f="${f.id}"><span class="dot" style="background:${f.color}"></span>${f.name.slice(0,24)} <span style="color:var(--muted)">(${f.members.length})</span></div>`).join('');
+      `<div class="row f ${factionFocus===f.id?'sel':''}" data-f="${f.id}"><span class="dot" style="background:${f.color}"></span>${f.name.slice(0,28)} <span style="color:var(--muted)">(${f.members.length})</span></div>`).join('');
     const rest = nodes.length - big.reduce((s,f)=>s+f.members.length,0);
     if(rest>0) html += `<div class="row"><span class="dot" style="background:#5b6a74"></span>smaller blocs <span style="color:var(--muted)">(${rest})</span></div>`;
   }
@@ -461,7 +512,7 @@ function showTip(n, px, py){
     .sort((a,b)=>b.j-a.j).slice(0,4);
   const f = factionOf[n.id];
   tip.innerHTML = `<div class="nm">${n.name}</div>`+
-    `<div class="meta">${(PARTY[n.party]||PARTY.OTH).label} · raised ${fmt(n.raised)} from ${n.nDonors.toLocaleString()} donors`+
+    `<div class="meta">${(PARTY[n.party]||PARTY.OTH).label}${n.office?' · '+n.office:''} · raised ${fmt(n.raised)} from ${n.nDonors.toLocaleString()} donors`+
     (f && f.members.length>1 ? `<br>${f.name} (${f.members.length} committees)` : '')+`</div>`+
     (allies.length ? `<div class="allies">Shares donors with:<br>`+
       allies.map(a=>`<span class="a">${a.o.name.slice(0,30)}</span> <span class="j">— ${a.shared}${a.sd!=null?' · '+fmt(a.sd):''} (${(a.j*100).toFixed(0)}%)</span>`).join('<br>')+`</div>` : '');
