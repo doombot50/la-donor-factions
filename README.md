@@ -60,8 +60,14 @@ link like `…/#1144` opens with that committee focused — shareable permalinks
 
 The legend toggles between two colorings: **Party** (registered party of the filer)
 and **Faction** — blocs *discovered* from the money itself via Jaccard-weighted
-label propagation over the shared-donor graph, each named for its biggest member
-(e.g. the Gumbo PAC bloc). Click a faction row to spotlight just that bloc;
+label propagation over the shared-donor graph. A bloc is named for its story when
+it has one: if at least half its members hold the same class of office it becomes
+"Sheriffs", "Judges", or "Republican legislators" (party prefixed when ≥⅔ share
+one; offices come from SoS candidacies joined in by `build_factions.py`).
+Otherwise — statewide personalities, PAC networks — it's named for its **hub**,
+the member most connected to the rest of the bloc under the active edge weight
+(e.g. the John Alario, Jr. bloc), with the hub's surname appended when two blocs
+would otherwise share a name. Click a faction row to spotlight just that bloc;
 <kbd>Esc</kbd> resets everything.
 
 ## Deploy (GitHub Pages)
