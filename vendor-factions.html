@@ -132,9 +132,6 @@ function boot(data){
   buildSearch();
   requestAnimationFrame(tick);
 }
-if(window.__GRAPH_DATA__) boot(window.__GRAPH_DATA__);
-else fetch('./vendor_factions.json').then(r=>r.json()).then(boot)
-       .catch(()=>{ document.getElementById('loading').textContent='Could not load vendor_factions.json'; });
 
 // ── faction detection ────────────────────────────────────────────────────────
 // Weighted label propagation over the shared-vendor graph: each node repeatedly
@@ -485,6 +482,12 @@ function showTip(n, px, py){
   tip.style.left = Math.min(px+14, W-tw-10)+'px';
   tip.style.top  = Math.min(py+14, H-th-10)+'px';
 }
+
+// Kick off last — after every const/function above is initialized — so the
+// synchronous inlined-data path can't hit a temporal-dead-zone reference.
+if(window.__GRAPH_DATA__) boot(window.__GRAPH_DATA__);
+else fetch('./vendor_factions.json').then(r=>r.json()).then(boot)
+       .catch(()=>{ document.getElementById('loading').textContent='Could not load vendor_factions.json'; });
 </script>
 </body>
 </html>
