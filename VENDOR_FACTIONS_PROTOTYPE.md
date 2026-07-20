@@ -7,8 +7,11 @@ that quietly operate a bloc. It maps the **operative layer** the donor tool
 can't see.
 
 Status: **proof-of-concept**. `build_vendor_factions.py` produces the graph
-(`vendor_factions.json`) and prints diagnostics. No viz yet — the next step is
-to point donor-factions' `index.html` force-directed renderer at this output.
+(`vendor_factions.json`) and prints diagnostics; `vendor-factions.html` renders
+it as an interactive force-directed network (a sibling of donor-factions'
+`index.html` — same canvas engine, party/bloc coloring, search, zoom/pan). Its
+hover card names the *vendors* two committees share, which the donor graph
+can't do.
 
 ## Why it isn't a find-and-replace of build_factions.py
 
@@ -76,19 +79,34 @@ Prints: strongest shared-vendor links (with the vendors that glue each), the
 vendors gluing the most committee-pairs (the operative hubs), and the connected
 components (candidate blocs). Writes `vendor_factions.json` (nodes + edges).
 
+## Vendor identity resolution (conservative)
+
+`resolve_key()` merges morphological variants of the same firm without collapsing
+distinct ones — the balance the data demands. Probing showed the signal vendors
+fragment (`LITTLEFIELD CONSULTING` / `CONSULTANTS` / `& ASSOCIATES CONSULTING` =
+one firm split three ways, which weakened the flagship Landry-bloc edge), while
+same-surname *different* firms sit right next to them (`ARSEMENT MEDIA GROUP` vs
+`ARSEMENT PRODUCTIONS`; `SPARTAN PUBLIC AFFAIRS` vs the high-school
+`SPARTANETTES`). So the rule folds `AND`/`&`, strips a leading `THE`, and peels
+only trailing **firm-type** words (`CONSULTING`, `ASSOCIATES`, `PARTNERS`,
+`COMPANY`…) — deliberately *not* `MEDIA`/`GROUP`/`PRODUCTIONS`, which distinguish
+real siblings. Each cluster keeps its most-common spelling as the display label.
+A tiny curated `_FIRM_CANON` handles same-entity/different-name cases the rules
+can't infer (NCC Media rebranded as **Ampersand** → one vendor). Net effect:
+Littlefield consolidates and pulls in Elizabeth Murrill; no false edges appear.
+
 ## Known limitations / next steps
 
-- **Vendor identity is only lightly normalized** (punctuation + corporate-suffix
-  strip + a tiny alias map). `USPS` vs `UNITED STATES POSTAL SERVICE` don't merge
-  — harmless here because both are commodity stopwords, but a *boutique* vendor
-  split across spellings undercounts. A small org-variant resolver (modeled on
-  `build_donor_entities.py`) is the main accuracy lever.
+- **Resolution is intentionally shallow.** It won't merge a firm that changed
+  names or a genuine typo cluster beyond the `_FIRM_CANON` list. Extending toward
+  a `build_donor_entities.py`-style resolver (with city/state corroboration) is
+  the next accuracy lever if the graph is widened past the top 300.
 - **Residual noise** is a few same-person committee pairs (a candidate's campaign
   + their PAC) and local caterer/venue pairs among co-located candidates. Minor;
   contained by `MIN_SHARED` + IDF.
-- **No viz yet.** Reuse donor-factions' `index.html` renderer; the node/edge
-  schema is intentionally close (`id, name, party, spend, nVendors` / `a, b,
-  shared, jaccard, wjaccard, topVendors`). `topVendors` on each edge lets a hover
-  card name *why* two committees are tied — a feature the donor graph lacks.
+- **Deploy wiring.** The viz reads `window.__GRAPH_DATA__` if present, else
+  fetches `./vendor_factions.json` — so it works both as a standalone file (data
+  inlined) and as a Pages/served page. If this graduates from prototype, add it
+  to `pages.yml`'s uploaded root (or its own workflow) like `index.html`.
 - **Category weighting** (favor `ADVERTISING`/`CONSULTING`/`POLLING` descriptions)
   could sharpen the operative signal further, but DF + IDF already do most of it.

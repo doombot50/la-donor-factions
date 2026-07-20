@@ -79,6 +79,44 @@ def norm_vendor(s):
     s = re.sub(r'\s+', ' ', s).strip()
     return _ALIAS.get(s, s)
 
+# Light identity resolution: merge morphological variants of the SAME firm without
+# collapsing genuinely different ones. Probing the data showed the signal vendors
+# fragment ("LITTLEFIELD CONSULTING" / "CONSULTANTS" / "& ASSOCIATES CONSULTING" =
+# one firm split 3 ways), so we fold AND/&, drop a leading THE, and peel only
+# trailing FIRM-TYPE words. We deliberately do NOT peel MEDIA/GROUP/PRODUCTIONS —
+# those distinguish real siblings ("Arsement Media Group" vs "Arsement
+# Productions"), and over-merging would fabricate the false edges we work to avoid.
+_GENERIC = {'CONSULTING', 'CONSULTANTS', 'CONSULTANT', 'ASSOCIATES', 'ASSOCIATION',
+            'ASSOC', 'PARTNERS', 'PARTNER', 'COMPANY'}
+# Domain merges the morphological rules can't know: firms that are the same
+# entity under different names. NCC Media (National Cable Communications) is the
+# cable-ad rep that rebranded as Ampersand, so its many spellings are one vendor.
+_FIRM_CANON = [
+    (re.compile(r'^NCC\b'),       'AMPERSAND'),
+    (re.compile(r'^AMPERSAND\b'), 'AMPERSAND'),
+]
+def resolve_key(nv):
+    s = nv[4:] if nv.startswith('THE ') else nv
+    s = re.sub(r'\b(AND|&)\b', ' ', s)
+    toks = re.sub(r'\s+', ' ', s).strip().split()
+    while len(toks) > 1 and toks[-1] in _GENERIC:
+        toks.pop()
+    k = ' '.join(toks) or nv
+    for pat, canon in _FIRM_CANON:
+        if pat.match(k):
+            return canon
+    return k
+
+# Resolved key -> most-common original spelling, for readable display labels.
+DISPLAY = defaultdict(Counter)
+def key_of(raw):
+    nv = norm_vendor(raw)
+    if not nv or nv == 'UNKNOWN':
+        return None
+    k = resolve_key(nv)
+    DISPLAY[k][nv] += 1
+    return k
+
 # ── political-recipient filter (the crucial one) ─────────────────────────────
 # The first spike drowned in a false signal: trade-association PACs that all
 # *donate to the same politicians* looked "allied" — but a contribution to a
@@ -184,8 +222,8 @@ for r in _rows():
     raw = (r.get('contributor') or '').strip()
     if not fn or not raw or not _is_vendor(raw):
         continue
-    v = norm_vendor(raw)
-    if not v or v == 'UNKNOWN':
+    v = key_of(raw)
+    if not v:
         continue
     amt = float(r.get('amount') or 0)
     if amt <= 0:
@@ -218,8 +256,8 @@ for r in _rows():
     raw = (r.get('contributor') or '').strip()
     if not raw or not _is_vendor(raw):
         continue
-    v = norm_vendor(raw)
-    if not v or v == 'UNKNOWN' or v in stop:
+    v = key_of(raw)
+    if not v or v in stop:
         continue
     vend[fn].add(v)
     vend_to_filers[v].add(fn)
@@ -262,9 +300,18 @@ def _party(fn):
     p = parties[fn].most_common(1)[0][0] if parties[fn] else 'OTH'
     return p if p in ('DEM', 'REP', 'IND', 'LBT', 'GRN') else 'OTH'
 
+# Resolved key -> readable label (the most-common original spelling), except a
+# firm-canon target shows under its canonical name (Ampersand, not "NCC Media").
+disp = {k: c.most_common(1)[0][0] for k, c in DISPLAY.items()}
+for _pat, _canon in _FIRM_CANON:
+    if _canon in disp:
+        disp[_canon] = _canon
+def _disp(v):
+    return disp.get(v, v)
+
 edges = []
 for (a, b), (sv, wj, j) in keep.items():
-    top_sv = sorted(sv, key=lambda v: -idf.get(v, 0.0))[:6]
+    top_sv = [_disp(v) for v in sorted(sv, key=lambda v: -idf.get(v, 0.0))[:6]]
     edges.append({'a': a, 'b': b, 'shared': len(sv), 'jaccard': round(j, 4),
                   'wjaccard': round(wj, 4), 'topVendors': top_sv})
 
@@ -327,7 +374,7 @@ for (a, b), (sv, wj, j) in keep.items():
 for v, c in sorted(glue_pairs.items(), key=lambda x: (-x[1], -idf.get(x[0], 0)))[:18]:
     who = ', '.join(_nm(f)[:18] for f in sorted(glue_where[v], key=lambda f: -spend[f])[:4])
     print(f'  {c:>2} pairs / {len(glue_where[v]):>2} committees  DF={df.get(v,0):>4}  '
-          f'{v[:26]:<26} e.g. {who}')
+          f'{_disp(v)[:26]:<26} e.g. {who}')
 
 print(f'\n{len(comps)} connected components; largest first:')
 for comp in sorted(comps, key=len, reverse=True)[:10]:

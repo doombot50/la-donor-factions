@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Louisiana's Vendor Factions — who hires the same operatives</title>
+<style>
+  :root {
+    --bg:#0e1418; --panel:#162028; --line:#26333d; --text:#e6edf3; --muted:#8aa0ad;
+    --dem:#3b76e0; --rep:#e0524d; --ind:#9b6bf0; --lbt:#d9a441; --grn:#36a86f; --oth:#7d8b95;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; overflow:hidden; }
+  #wrap { position:fixed; inset:0; }
+  canvas { display:block; cursor:grab; touch-action:none; }
+  canvas.grabbing { cursor:grabbing; }
+
+  header { position:absolute; top:0; left:0; right:0; padding:14px 18px;
+    background:linear-gradient(180deg, rgba(14,20,24,0.95), rgba(14,20,24,0)); pointer-events:none; }
+  h1 { margin:0; font-size:18px; font-weight:700; letter-spacing:-0.2px; }
+  .sub { margin:3px 0 0; font-size:12.5px; color:var(--muted); max-width:700px; line-height:1.5; }
+  .sub b { color:var(--text); font-weight:600; }
+
+  #search { position:absolute; top:14px; right:18px; z-index:6; width:220px; max-width:46vw;
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    color:var(--text); padding:7px 10px; font-size:12.5px; outline:none; }
+  #search::placeholder { color:var(--muted); }
+  #search:focus { border-color:#3d5464; }
+
+  .legend { position:absolute; bottom:14px; left:18px; background:var(--panel);
+    border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-size:12px; }
+  .legend .modes { display:flex; gap:4px; margin-bottom:7px; }
+  .legend .modes button { flex:1; background:none; border:1px solid var(--line); border-radius:6px;
+    color:var(--muted); font:inherit; font-size:11px; padding:3px 8px; cursor:pointer; }
+  .legend .modes button.on { background:#22303a; color:var(--text); border-color:#3d5464; }
+  .legend .row { display:flex; align-items:center; gap:7px; margin:3px 0; }
+  .legend .row.f { cursor:pointer; border-radius:5px; padding:1px 3px; margin:1px -3px; }
+  .legend .row.f:hover { background:#1d2933; }
+  .legend .row.f.sel { background:#22303a; }
+  .dot { width:11px; height:11px; border-radius:50%; flex:0 0 auto; }
+  .legend .note { color:var(--muted); margin-top:8px; max-width:240px; line-height:1.45; font-size:11px; }
+  .legend .stat { color:var(--muted); margin-top:6px; font-size:11px; }
+
+  #tip { position:absolute; pointer-events:none; background:var(--panel); border:1px solid var(--line);
+    border-radius:8px; padding:9px 11px; font-size:12px; max-width:290px; display:none; z-index:5;
+    box-shadow:0 8px 24px rgba(0,0,0,0.4); }
+  #tip .nm { font-weight:700; margin-bottom:2px; }
+  #tip .meta { color:var(--muted); font-size:11px; }
+  #tip .allies { margin-top:6px; padding-top:6px; border-top:1px solid var(--line); font-size:11px; }
+  #tip .allies .a { color:var(--text); }
+  #tip .allies .j { color:var(--muted); }
+  #tip .allies .v { color:var(--muted); font-style:italic; }
+
+  .hint { position:absolute; bottom:14px; right:18px; font-size:11px; color:var(--muted);
+    background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:7px 10px; }
+  #loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    color:var(--muted); font-size:14px; }
+
+  @media (max-width: 640px), (max-height: 500px) {
+    header { padding:10px 12px; }
+    h1 { font-size:15px; }
+    .sub { font-size:11px; display:-webkit-box; -webkit-line-clamp:3;
+      -webkit-box-orient:vertical; overflow:hidden; }
+    #search { top:10px; right:12px; width:160px; font-size:16px; }
+    .legend { left:12px; bottom:12px; padding:8px 9px; font-size:11px;
+      max-width:64vw; max-height:40vh; overflow-y:auto; overscroll-behavior:contain; }
+    .legend .note { font-size:10px; }
+    .hint { display:none; }
+    #tip { max-width:min(290px, 80vw); }
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+  <header>
+    <h1>Louisiana's Vendor Factions</h1>
+    <p class="sub">Each dot is a major political committee; a line joins two that <b>pay the same vendors</b> —
+       the media firms, pollsters, mail houses, and consultants that run a campaign. Commodity vendors
+       (Office Depot, the post office, Facebook) and contributions to candidates are filtered out, so a link
+       means a shared <b>operative</b>, not a shared errand. Thicker, shorter links = higher overlap, weighted so a
+       rare consultant outweighs a common one. <b>Hover</b> a node to see who it shares vendors with and which ones;
+       <b>click</b> to isolate its neighborhood.</p>
+  </header>
+  <input id="search" list="names" placeholder="Search committees…" autocomplete="off">
+  <datalist id="names"></datalist>
+  <div class="legend" id="legend"></div>
+  <div class="hint">scroll / pinch = zoom · drag = pan · tap node = focus · esc = reset</div>
+  <div id="tip"></div>
+  <div id="loading">Loading the network…</div>
+</div>
+
+<script>
+const PARTY = {
+  DEM:{c:'#3b76e0',label:'Democrat'}, REP:{c:'#e0524d',label:'Republican'},
+  IND:{c:'#9b6bf0',label:'Independent'}, LBT:{c:'#d9a441',label:'Libertarian'},
+  GRN:{c:'#36a86f',label:'Green'}, OTH:{c:'#7d8b95',label:'PAC / committee'},
+};
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d'), tip = document.getElementById('tip');
+let W, H, DPR = Math.min(window.devicePixelRatio||1, 2);
+function resize(){ W=window.innerWidth; H=window.innerHeight; cv.width=W*DPR; cv.height=H*DPR;
+  cv.style.width=W+'px'; cv.style.height=H+'px'; ctx.setTransform(DPR,0,0,DPR,0,0); }
+window.addEventListener('resize', () => { resize(); draw(); });
+resize();
+
+let nodes=[], edges=[], byId={}, adj={};
+let view={x:0,y:0,k:1}, alpha=1, focus=null, hover=null;
+let META=null, colorMode='party', factions=[], factionOf={}, factionFocus=null;
+let weightMode='idf';   // 'idf' (IDF-weighted Jaccard) | 'count' (plain Jaccard)
+// Edge weight under the active mode; a rare shared vendor (high IDF) counts more.
+function ew(e){ return weightMode==='count' ? e.jaccard : (e.wjaccard!=null ? e.wjaccard : e.jaccard); }
+let pendingHash = decodeURIComponent(location.hash.slice(1)||'');
+
+function boot(data){
+  document.getElementById('loading').style.display='none';
+  nodes = data.nodes; edges = data.edges;
+  byId = Object.fromEntries(nodes.map(n=>[n.id,n]));
+  const maxR = Math.max(...nodes.map(n=>n.spend||1));
+  nodes.forEach((n,i)=>{
+    n.r = 4 + 22*Math.sqrt((n.spend||1)/maxR);
+    const a = (i/nodes.length)*Math.PI*2;
+    n.x = Math.cos(a)*340 + (Math.random()-0.5)*60;
+    n.y = Math.sin(a)*340 + (Math.random()-0.5)*60;
+    n.vx=0; n.vy=0; adj[n.id]=[];
+  });
+  edges.forEach(e=>{ if(byId[e.a]&&byId[e.b]){ adj[e.a].push(e); adj[e.b].push(e); } });
+  view = { x:W/2, y:H/2, k:1 };
+  META = data;
+  computeFactions();
+  buildLegend();
+  buildSearch();
+  requestAnimationFrame(tick);
+}
+if(window.__GRAPH_DATA__) boot(window.__GRAPH_DATA__);
+else fetch('./vendor_factions.json').then(r=>r.json()).then(boot)
+       .catch(()=>{ document.getElementById('loading').textContent='Could not load vendor_factions.json'; });
+
+// ── faction detection ────────────────────────────────────────────────────────
+// Weighted label propagation over the shared-vendor graph: each node repeatedly
+// adopts the label carrying the most overlap among its neighbors. Clusters are
+// de-facto vendor blocs — committees wired to the same operatives.
+const FACTION_COLORS = {
+  REP: ['#e0524d','#e08b3b','#e07db8','#b8434f','#e8a07a'],
+  DEM: ['#3b76e0','#4fc3d9','#7a91e0','#2fa3a0','#5fd9a8'],
+  MIX: ['#9b6bf0','#36a86f','#e0b23f','#c46be0','#8fd94f','#4d9e83','#b5895a','#a586c9','#7d8b95'],
+};
+function factionLean(m){
+  const nr=m.filter(n=>n.party==='REP').length, nd=m.filter(n=>n.party==='DEM').length;
+  return nr>=m.length*2/3 ? 'REP' : nd>=m.length*2/3 ? 'DEM' : null;
+}
+function computeFactions(){
+  factionOf = {};
+  const label = {}; nodes.forEach(n=>label[n.id]=n.id);
+  for(let it=0; it<60; it++){
+    let changed = 0;
+    for(const n of nodes){
+      const w = {};
+      adj[n.id].forEach(e=>{ const o=e.a===n.id?e.b:e.a; w[label[o]]=(w[label[o]]||0)+ew(e); });
+      let best=label[n.id], bw=0;
+      for(const l in w) if(w[l]>bw || (w[l]===bw && l<best)){ bw=w[l]; best=l; }
+      if(bw>0 && best!==label[n.id]){ label[n.id]=best; changed++; }
+    }
+    if(!changed) break;
+  }
+  const groups = {};
+  nodes.forEach(n=>{ (groups[label[n.id]] = groups[label[n.id]]||[]).push(n); });
+  factions = Object.values(groups)
+    .map(m=>({ members:m, spend:m.reduce((s,n)=>s+(n.spend||0),0) }))
+    .sort((a,b)=>b.spend-a.spend);
+  const pools = { REP:[...FACTION_COLORS.REP], DEM:[...FACTION_COLORS.DEM], MIX:[...FACTION_COLORS.MIX] };
+  factions.forEach((f,i)=>{
+    f.id = i;
+    f.lean = factionLean(f.members);
+    let pool = pools[f.lean||'MIX'];
+    if(!pool.length && !f.lean) pool = pools.REP.length>=pools.DEM.length ? pools.REP : pools.DEM;
+    if(!pool.length) pool = pools.MIX;
+    f.color = (f.members.length>=3 && pool.length) ? pool.shift() : '#5b6a74';
+    f.members.forEach(n=>factionOf[n.id]=f);
+  });
+  factions.forEach(f=>{ f.hub = hubOf(f); f.glue = glueOf(f); f.name = factionName(f); });
+  const cnt = {}; factions.forEach(f=>cnt[f.name]=(cnt[f.name]||0)+1);
+  factions.forEach(f=>{ if(cnt[f.name]>1 && f.members.length>1) f.name += ' · '+f.hub.name.split(' ').pop(); });
+}
+
+// The hub is the member most connected (by the active edge weight) to the rest
+// of its bloc — what actually holds it together.
+function hubOf(f){
+  let best=f.members[0], bw=-1;
+  for(const n of f.members){
+    let w=0;
+    adj[n.id].forEach(e=>{ const o=e.a===n.id?e.b:e.a; if(factionOf[o]===f) w+=ew(e); });
+    if(w>bw || (w===bw && (n.spend||0)>(best.spend||0))){ bw=w; best=n; }
+  }
+  return best;
+}
+// The vendor gluing the most internal committee-pairs — the bloc's shared operative.
+function glueOf(f){
+  const set = new Set(f.members.map(n=>n.id)), c = {};
+  edges.forEach(e=>{ if(set.has(e.a)&&set.has(e.b)) (e.topVendors||[]).forEach(v=>c[v]=(c[v]||0)+1); });
+  let best=null, bc=0; for(const v in c) if(c[v]>bc){ bc=c[v]; best=v; }
+  return best;
+}
+function factionName(f){
+  const m=f.members;
+  if(m.length===1) return m[0].name;
+  return f.hub.name+' bloc';
+}
+function nodeColor(n){
+  return colorMode==='party' ? (PARTY[n.party]||PARTY.OTH).c : factionOf[n.id].color;
+}
+
+function buildLegend(){
+  let html = `<div class="modes"><button id="mParty" class="${colorMode==='party'?'on':''}">Party</button>`+
+             `<button id="mFaction" class="${colorMode==='faction'?'on':''}">Bloc</button></div>`;
+  html += `<div class="modes"><button id="wIdf" class="${weightMode==='idf'?'on':''}">Weight: IDF</button>`+
+          `<button id="wCount" class="${weightMode==='count'?'on':''}">shared count</button></div>`;
+  if(colorMode==='party'){
+    const counts = {}; nodes.forEach(n=>counts[n.party]=(counts[n.party]||0)+1);
+    html += Object.keys(PARTY).filter(p=>counts[p]).map(p =>
+      `<div class="row"><span class="dot" style="background:${PARTY[p].c}"></span>${PARTY[p].label} <span style="color:var(--muted)">(${counts[p]})</span></div>`).join('');
+  } else {
+    const big = factions.filter(f=>f.members.length>=3).slice(0,10);
+    html += big.map(f =>
+      `<div class="row f ${factionFocus===f.id?'sel':''}" data-f="${f.id}" title="${f.glue?('glued by '+f.glue):''}"><span class="dot" style="background:${f.color}"></span>${f.name.slice(0,26)} <span style="color:var(--muted)">(${f.members.length})</span></div>`).join('');
+    const rest = nodes.length - big.reduce((s,f)=>s+f.members.length,0);
+    if(rest>0) html += `<div class="row"><span class="dot" style="background:#5b6a74"></span>smaller blocs <span style="color:var(--muted)">(${rest})</span></div>`;
+  }
+  html += `<div class="stat">${nodes.length} committees · ${edges.length} shared-vendor links</div>`;
+  html += `<div class="note">Top ${META.params.top} committees by service spend; a link needs ≥${META.params.min_shared} shared vendors and ≥${(META.params.min_wjaccard*100).toFixed(0)}% weighted overlap. Vendors paid by ≥${META.params.stopword_df} committees dropped as commodity. Built ${META.generated}.</div>`;
+  const legend = document.getElementById('legend');
+  legend.innerHTML = html;
+  document.getElementById('mParty').onclick   = ()=>setMode('party');
+  document.getElementById('mFaction').onclick = ()=>setMode('faction');
+  document.getElementById('wIdf').onclick   = ()=>setWeight('idf');
+  document.getElementById('wCount').onclick = ()=>setWeight('count');
+  legend.querySelectorAll('.row.f').forEach(el=>el.onclick = ()=>{
+    const fid = +el.dataset.f;
+    factionFocus = (factionFocus===fid) ? null : fid;
+    buildLegend(); _needsDraw=true; requestAnimationFrame(tick);
+  });
+}
+function setMode(m){
+  colorMode = m; if(m==='party') factionFocus = null;
+  buildLegend(); _needsDraw=true; requestAnimationFrame(tick);
+}
+function setWeight(m){
+  if(m===weightMode) return;
+  weightMode = m; factionFocus = null;
+  computeFactions();
+  buildLegend();
+  alpha = Math.max(alpha, 0.6);
+  _fitted = false; _settledFit = false; _userView = false;
+  if(hover) showTip(hover, sx(hover), sy(hover));
+  _needsDraw=true; requestAnimationFrame(tick);
+}
+
+// ── search: type a committee name to fly to it ──────────────────────────────
+function buildSearch(){
+  document.getElementById('names').innerHTML =
+    nodes.map(n=>`<option value="${n.name.replace(/"/g,'&quot;')}">`).join('');
+  const inp = document.getElementById('search');
+  inp.addEventListener('change', ()=>{
+    const q = inp.value.trim().toLowerCase(); if(!q) return;
+    const n = nodes.find(x=>x.name.toLowerCase()===q) || nodes.find(x=>x.name.toLowerCase().includes(q));
+    if(n){
+      focus=n; hover=n; updateHash();
+      if(factionFocus!=null){ factionFocus=null; buildLegend(); }
+      flyTo(n); inp.blur();
+    }
+  });
+}
+function flyTo(n){
+  const k = Math.max(view.k, 1.0);
+  const from = {x:view.x, y:view.y, k:view.k}, t0 = performance.now();
+  (function anim(t){
+    const p = Math.min(1, (t-t0)/450), e = p*(2-p);
+    const tx = W/2 - n.x*k, ty = H/2 - n.y*k;
+    view.x = from.x+(tx-from.x)*e; view.y = from.y+(ty-from.y)*e; view.k = from.k+(k-from.k)*e;
+    _needsDraw=true; requestAnimationFrame(tick);
+    if(p<1) requestAnimationFrame(anim);
+    else if(focus===n) showTip(n, sx(n), sy(n));
+  })(t0);
+}
+function updateHash(){
+  history.replaceState(null, '', focus ? '#'+encodeURIComponent(focus.id)
+                                       : location.pathname+location.search);
+}
+
+// ── force simulation ───────────────────────────────────────────────────────
+function step(){
+  const REP = 3200*Math.max(1, nodes.length/250), CENTER = 0.045, DAMP = 0.86;
+  for(let i=0;i<nodes.length;i++){
+    const a=nodes[i];
+    for(let j=i+1;j<nodes.length;j++){
+      const b=nodes[j]; let dx=a.x-b.x, dy=a.y-b.y; let d2=dx*dx+dy*dy||0.01;
+      const f = REP/d2; const d=Math.sqrt(d2);
+      const fx=dx/d*f, fy=dy/d*f;
+      a.vx+=fx; a.vy+=fy; b.vx-=fx; b.vy-=fy;
+    }
+    a.vx -= a.x*CENTER; a.vy -= a.y*CENTER;
+  }
+  edges.forEach(e=>{
+    const a=byId[e.a], b=byId[e.b]; if(!a||!b) return;
+    let dx=b.x-a.x, dy=b.y-a.y; const d=Math.sqrt(dx*dx+dy*dy)||0.01;
+    const w = ew(e);
+    const ideal = 40 + 120*(1-w);
+    const k = 0.02 + 0.10*w;
+    const f = (d-ideal)*k;
+    const fx=dx/d*f, fy=dy/d*f;
+    a.vx+=fx*alpha; a.vy+=fy*alpha; b.vx-=fx*alpha; b.vy-=fy*alpha;
+  });
+  nodes.forEach(n=>{ if(n===dragNode) return; n.vx*=DAMP; n.vy*=DAMP; n.x+=n.vx*alpha; n.y+=n.vy*alpha; });
+}
+function fitView(){
+  if(!nodes.length) return;
+  const pct=(arr,p)=>{ const s=[...arr].sort((a,b)=>a-b); return s[Math.floor((s.length-1)*p)]; };
+  const xs=nodes.map(n=>n.x), ys=nodes.map(n=>n.y);
+  const minX=pct(xs,0.03), maxX=pct(xs,0.97), minY=pct(ys,0.03), maxY=pct(ys,0.97);
+  const gw=(maxX-minX)||1, gh=(maxY-minY)||1, pad=Math.min(80, W*0.07);
+  view.k = Math.max(W<640?0.12:0.25, Math.min((W-pad*2)/gw, (H-pad*2)/gh, 1.3));
+  view.x = W/2 - (minX+maxX)/2*view.k;
+  view.y = H/2 - (minY+maxY)/2*view.k;
+}
+let _needsDraw=false, _fitted=false, _settledFit=false, _userView=false;
+function tick(){
+  const wasLive = alpha>0;
+  if(alpha>0.02){ step(); alpha*=0.992; } else alpha=0;
+  if(!_fitted && alpha>0 && alpha<0.35){
+    _fitted=true; fitView();
+    if(pendingHash){ const n=byId[pendingHash]; pendingHash=''; if(n){ focus=n; hover=n; flyTo(n); } }
+  }
+  if(wasLive && alpha===0 && !_settledFit){
+    _settledFit=true; if(!_userView) fitView();
+  }
+  draw();
+  if(alpha>0 || _needsDraw){ _needsDraw=false; requestAnimationFrame(tick); }
+}
+function kick(){ if(alpha<0.05){ alpha=0.2; } _needsDraw=true; requestAnimationFrame(tick); }
+
+// ── rendering ──────────────────────────────────────────────────────────────
+function sx(n){ return view.x + n.x*view.k; }
+function sy(n){ return view.y + n.y*view.k; }
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const focusSet = focus ? new Set([focus.id, ...adj[focus.id].map(e=>e.a===focus.id?e.b:e.a)]) : null;
+  const inFaction = id => factionFocus==null || factionOf[id].id===factionFocus;
+  const edim = Math.min(1, 500/(edges.length||1));
+  edges.forEach(e=>{
+    const a=byId[e.a], b=byId[e.b]; if(!a||!b) return;
+    const inFocus = (!focusSet || (focusSet.has(e.a)&&focusSet.has(e.b)&&(e.a===focus.id||e.b===focus.id)))
+                    && inFaction(e.a) && inFaction(e.b);
+    const w = ew(e);
+    ctx.strokeStyle = inFocus ? `rgba(150,180,200,${(0.25+w*1.2)*(focusSet?1:edim)})` : 'rgba(120,140,155,0.05)';
+    ctx.lineWidth = inFocus ? (0.5+w*7) : 0.5;
+    ctx.beginPath(); ctx.moveTo(sx(a),sy(a)); ctx.lineTo(sx(b),sy(b)); ctx.stroke();
+  });
+  nodes.forEach(n=>{
+    const dim = (focusSet && !focusSet.has(n.id)) || !inFaction(n.id);
+    ctx.globalAlpha = dim ? 0.18 : 1;
+    ctx.beginPath(); ctx.arc(sx(n),sy(n), n.r*Math.sqrt(view.k), 0, Math.PI*2);
+    ctx.fillStyle = nodeColor(n); ctx.fill();
+    if(n===hover || n===focus){ ctx.lineWidth=2; ctx.strokeStyle='#fff'; ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  });
+  ctx.font = '11px -apple-system,sans-serif'; ctx.fillStyle='#cfd9e0';
+  ctx.textAlign='center'; ctx.textBaseline='bottom';
+  const labelSet = new Set(nodes.slice(0,10).map(n=>n.id));
+  if(focus){ labelSet.add(focus.id); adj[focus.id].forEach(e=>labelSet.add(e.a===focus.id?e.b:e.a)); }
+  if(hover) labelSet.add(hover.id);
+  nodes.forEach(n=>{
+    if(!labelSet.has(n.id)) return;
+    if(focusSet && !focusSet.has(n.id)) return;
+    if(!inFaction(n.id)) return;
+    ctx.fillText(n.name.slice(0,26), sx(n), sy(n)-n.r*Math.sqrt(view.k)-3);
+  });
+}
+
+// ── interaction ────────────────────────────────────────────────────────────
+function nodeAt(px,py){
+  let best=null, bestD=Infinity;
+  for(const n of nodes){ const dx=px-sx(n), dy=py-sy(n); const d=dx*dx+dy*dy;
+    const rr=(n.r*Math.sqrt(view.k)+4)**2; if(d<rr && d<bestD){ best=n; bestD=d; } }
+  return best;
+}
+let dragNode=null, panning=false, last={x:0,y:0};
+cv.addEventListener('mousedown', ev=>{
+  const n = nodeAt(ev.clientX, ev.clientY);
+  if(n){ dragNode=n; } else { panning=true; cv.classList.add('grabbing'); }
+  last={x:ev.clientX,y:ev.clientY};
+});
+window.addEventListener('mousemove', ev=>{
+  if(dragNode){ dragNode.x=(ev.clientX-view.x)/view.k; dragNode.y=(ev.clientY-view.y)/view.k; dragNode.vx=dragNode.vy=0; kick(); return; }
+  if(panning){ _userView=true; view.x+=ev.clientX-last.x; view.y+=ev.clientY-last.y; last={x:ev.clientX,y:ev.clientY}; _needsDraw=true; requestAnimationFrame(tick); return; }
+  const n = nodeAt(ev.clientX, ev.clientY);
+  if(n!==hover){ hover=n; _needsDraw=true; requestAnimationFrame(tick); }
+  if(n) showTip(n, ev.clientX, ev.clientY); else tip.style.display='none';
+});
+window.addEventListener('mouseup', ()=>{ dragNode=null; panning=false; cv.classList.remove('grabbing'); });
+cv.addEventListener('click', ev=>{
+  if(Math.abs(ev.clientX-last.x)>4||Math.abs(ev.clientY-last.y)>4) return;
+  const n = nodeAt(ev.clientX, ev.clientY);
+  focus = (n===focus) ? null : n; updateHash(); _needsDraw=true; requestAnimationFrame(tick);
+});
+window.addEventListener('keydown', ev=>{
+  if(ev.key==='Escape'){
+    focus=null; hover=null; factionFocus=null; tip.style.display='none';
+    updateHash(); buildLegend(); _needsDraw=true; requestAnimationFrame(tick);
+  }
+});
+function zoomAt(cx, cy, f){
+  _userView=true;
+  view.x = cx - (cx-view.x)*f;
+  view.y = cy - (cy-view.y)*f;
+  view.k *= f; _needsDraw=true; requestAnimationFrame(tick);
+}
+cv.addEventListener('wheel', ev=>{
+  ev.preventDefault();
+  zoomAt(ev.clientX, ev.clientY, ev.deltaY<0 ? 1.12 : 1/1.12);
+}, {passive:false});
+
+// ── touch ───────────────────────────────────────────────────────────────────
+let pinchDist=0, pinchMid={x:0,y:0}, touchMoved=false, tapStart={x:0,y:0};
+function touchDist(t){ const dx=t[0].clientX-t[1].clientX, dy=t[0].clientY-t[1].clientY; return Math.hypot(dx,dy); }
+function touchMid(t){ return { x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2 }; }
+cv.addEventListener('touchstart', ev=>{
+  ev.preventDefault();
+  const t = ev.touches;
+  if(t.length===1){
+    const n = nodeAt(t[0].clientX, t[0].clientY);
+    if(n){ dragNode=n; } else { panning=true; }
+    last = tapStart = { x:t[0].clientX, y:t[0].clientY };
+    touchMoved=false;
+  } else if(t.length>=2){
+    dragNode=null; panning=false;
+    pinchDist = touchDist(t); pinchMid = touchMid(t);
+  }
+}, {passive:false});
+cv.addEventListener('touchmove', ev=>{
+  ev.preventDefault();
+  const t = ev.touches;
+  if(t.length>=2){
+    const d = touchDist(t), m = touchMid(t);
+    if(pinchDist>0) zoomAt(m.x, m.y, d/pinchDist);
+    view.x += m.x-pinchMid.x; view.y += m.y-pinchMid.y;
+    pinchDist=d; pinchMid=m; touchMoved=true;
+    _needsDraw=true; requestAnimationFrame(tick);
+  } else if(t.length===1){
+    const x=t[0].clientX, y=t[0].clientY;
+    if(Math.abs(x-tapStart.x)>4||Math.abs(y-tapStart.y)>4) touchMoved=true;
+    if(dragNode){ dragNode.x=(x-view.x)/view.k; dragNode.y=(y-view.y)/view.k; dragNode.vx=dragNode.vy=0; kick(); }
+    else if(panning){ _userView=true; view.x+=x-last.x; view.y+=y-last.y; _needsDraw=true; requestAnimationFrame(tick); }
+    last={x,y};
+  }
+}, {passive:false});
+cv.addEventListener('touchend', ev=>{
+  if(ev.touches.length===0){
+    if(!touchMoved){
+      const n = nodeAt(tapStart.x, tapStart.y);
+      focus = (n===focus) ? null : n; updateHash();
+      hover = n;
+      if(n) showTip(n, tapStart.x, tapStart.y); else tip.style.display='none';
+    }
+    dragNode=null; panning=false; pinchDist=0;
+    _needsDraw=true; requestAnimationFrame(tick);
+  } else if(ev.touches.length===1){
+    panning=true; dragNode=null; pinchDist=0;
+    last={ x:ev.touches[0].clientX, y:ev.touches[0].clientY };
+  }
+}, {passive:false});
+
+function fmt(v){ return v>=1e6 ? '$'+(v/1e6).toFixed(1)+'M' : v>=1e3 ? '$'+(v/1e3).toFixed(0)+'K' : '$'+v; }
+function showTip(n, px, py){
+  const allies = adj[n.id].map(e=>({ o:byId[e.a===n.id?e.b:e.a], shared:e.shared, j:ew(e), vendors:e.topVendors||[] }))
+    .sort((a,b)=>b.j-a.j).slice(0,4);
+  const f = factionOf[n.id];
+  tip.innerHTML = `<div class="nm">${n.name}</div>`+
+    `<div class="meta">${(PARTY[n.party]||PARTY.OTH).label} · spent ${fmt(n.spend)} across ${n.nVendors.toLocaleString()} vendors`+
+    (f && f.members.length>1 ? `<br>${f.name} (${f.members.length} committees)` : '')+`</div>`+
+    (allies.length ? `<div class="allies">Shares vendors with:<br>`+
+      allies.map(a=>`<span class="a">${a.o.name.slice(0,30)}</span> <span class="j">— ${a.shared} shared (${(a.j*100).toFixed(0)}%)</span>`+
+        (a.vendors.length ? `<br><span class="v">via ${a.vendors.slice(0,3).join(', ')}</span>` : '')).join('<br>')+`</div>` : '');
+  tip.style.display='block';
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  tip.style.left = Math.min(px+14, W-tw-10)+'px';
+  tip.style.top  = Math.min(py+14, H-th-10)+'px';
+}
+</script>
+</body>
+</html>
