@@ -51,6 +51,31 @@
   #tip .allies .a { color:var(--text); }
   #tip .allies .j { color:var(--muted); }
   #tip .allies .v { color:var(--muted); font-style:italic; }
+  #tip .tiphint { margin-top:6px; color:#6f97b3; font-size:10.5px; }
+
+  /* Detail panel — the full shared-vendor sheet for a clicked committee. */
+  #panel { position:absolute; top:58px; right:18px; width:330px; max-width:82vw;
+    max-height:calc(100vh - 150px); overflow-y:auto; overscroll-behavior:contain;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:12px 14px; font-size:12px; z-index:7; display:none;
+    box-shadow:0 12px 32px rgba(0,0,0,0.45); }
+  #panel .phead { display:flex; align-items:flex-start; gap:8px; justify-content:space-between; }
+  #panel .pnm { font-weight:700; font-size:14px; line-height:1.25; }
+  #panel #pclose { flex:0 0 auto; background:none; border:none; color:var(--muted);
+    font-size:18px; line-height:1; cursor:pointer; padding:0 2px; }
+  #panel #pclose:hover { color:var(--text); }
+  #panel .pmeta { color:var(--muted); font-size:11px; margin:2px 0 4px; line-height:1.4; }
+  #panel .pally { border-top:1px solid var(--line); padding:9px 0 3px; }
+  #panel .pallyhd { display:flex; justify-content:space-between; gap:8px; align-items:baseline; cursor:pointer; }
+  #panel .pallyhd .an { color:var(--text); font-weight:600; }
+  #panel .pallyhd:hover .an { text-decoration:underline; }
+  #panel .pallyhd .ac { color:var(--muted); font-size:11px; white-space:nowrap; }
+  #panel .pvend { margin:6px 0 2px; display:flex; flex-wrap:wrap; gap:4px; }
+  #panel .chip { background:#1d2933; border:1px solid var(--line); border-radius:5px;
+    padding:2px 6px; font-size:11px; color:var(--text); }
+  #panel .chip b { color:var(--muted); font-weight:400; }
+  #panel .pmore { color:var(--muted); font-size:11px; align-self:center; }
+  #panel .pnone { color:var(--muted); font-size:11px; padding:6px 0; }
 
   .hint { position:absolute; bottom:14px; right:18px; font-size:11px; color:var(--muted);
     background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:7px 10px; }
@@ -80,14 +105,15 @@
        the media firms, pollsters, mail houses, and consultants that run a campaign. Commodity vendors
        (Office Depot, the post office, Facebook) and contributions to candidates are filtered out, so a link
        means a shared <b>operative</b>, not a shared errand. Thicker, shorter links = higher overlap, weighted so a
-       rare consultant outweighs a common one. <b>Hover</b> a node to see who it shares vendors with and which ones;
-       <b>click</b> to isolate its neighborhood.</p>
+       rare consultant outweighs a common one. <b>Hover</b> a node for a quick read;
+       <b>click</b> a committee to isolate it and open its full shared-vendor sheet — every operative it shares, with whom.</p>
   </header>
   <input id="search" list="names" placeholder="Search committees…" autocomplete="off">
   <datalist id="names"></datalist>
   <div class="legend" id="legend"></div>
   <div class="hint">scroll / pinch = zoom · drag = pan · tap node = focus · esc = reset</div>
   <div id="tip"></div>
+  <div id="panel"></div>
   <div id="loading">Loading the network…</div>
 </div>
 
@@ -194,7 +220,7 @@ function hubOf(f){
 // The vendor gluing the most internal committee-pairs — the bloc's shared operative.
 function glueOf(f){
   const set = new Set(f.members.map(n=>n.id)), c = {};
-  edges.forEach(e=>{ if(set.has(e.a)&&set.has(e.b)) (e.topVendors||[]).forEach(v=>c[v]=(c[v]||0)+1); });
+  edges.forEach(e=>{ if(set.has(e.a)&&set.has(e.b)) (e.topVendors||[]).forEach(v=>{ const nm=v[0]; c[nm]=(c[nm]||0)+1; }); });
   let best=null, bc=0; for(const v in c) if(c[v]>bc){ bc=c[v]; best=v; }
   return best;
 }
@@ -263,7 +289,7 @@ function buildSearch(){
     if(n){
       focus=n; hover=n; updateHash();
       if(factionFocus!=null){ factionFocus=null; buildLegend(); }
-      flyTo(n); inp.blur();
+      flyTo(n); showPanel(n); inp.blur();
     }
   });
 }
@@ -325,7 +351,7 @@ function tick(){
   if(alpha>0.02){ step(); alpha*=0.992; } else alpha=0;
   if(!_fitted && alpha>0 && alpha<0.35){
     _fitted=true; fitView();
-    if(pendingHash){ const n=byId[pendingHash]; pendingHash=''; if(n){ focus=n; hover=n; flyTo(n); } }
+    if(pendingHash){ const n=byId[pendingHash]; pendingHash=''; if(n){ focus=n; hover=n; flyTo(n); showPanel(n); } }
   }
   if(wasLive && alpha===0 && !_settledFit){
     _settledFit=true; if(!_userView) fitView();
@@ -397,11 +423,13 @@ window.addEventListener('mouseup', ()=>{ dragNode=null; panning=false; cv.classL
 cv.addEventListener('click', ev=>{
   if(Math.abs(ev.clientX-last.x)>4||Math.abs(ev.clientY-last.y)>4) return;
   const n = nodeAt(ev.clientX, ev.clientY);
-  focus = (n===focus) ? null : n; updateHash(); _needsDraw=true; requestAnimationFrame(tick);
+  focus = (n===focus) ? null : n; updateHash();
+  if(focus) showPanel(focus); else hidePanel();
+  _needsDraw=true; requestAnimationFrame(tick);
 });
 window.addEventListener('keydown', ev=>{
   if(ev.key==='Escape'){
-    focus=null; hover=null; factionFocus=null; tip.style.display='none';
+    focus=null; hover=null; factionFocus=null; tip.style.display='none'; hidePanel();
     updateHash(); buildLegend(); _needsDraw=true; requestAnimationFrame(tick);
   }
 });
@@ -457,6 +485,7 @@ cv.addEventListener('touchend', ev=>{
       focus = (n===focus) ? null : n; updateHash();
       hover = n;
       if(n) showTip(n, tapStart.x, tapStart.y); else tip.style.display='none';
+      if(focus) showPanel(focus); else hidePanel();
     }
     dragNode=null; panning=false; pinchDist=0;
     _needsDraw=true; requestAnimationFrame(tick);
@@ -467,21 +496,60 @@ cv.addEventListener('touchend', ev=>{
 }, {passive:false});
 
 function fmt(v){ return v>=1e6 ? '$'+(v/1e6).toFixed(1)+'M' : v>=1e3 ? '$'+(v/1e3).toFixed(0)+'K' : '$'+v; }
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function showTip(n, px, py){
   const allies = adj[n.id].map(e=>({ o:byId[e.a===n.id?e.b:e.a], shared:e.shared, j:ew(e), vendors:e.topVendors||[] }))
     .sort((a,b)=>b.j-a.j).slice(0,4);
   const f = factionOf[n.id];
-  tip.innerHTML = `<div class="nm">${n.name}</div>`+
+  tip.innerHTML = `<div class="nm">${esc(n.name)}</div>`+
     `<div class="meta">${(PARTY[n.party]||PARTY.OTH).label} · spent ${fmt(n.spend)} across ${n.nVendors.toLocaleString()} vendors`+
-    (f && f.members.length>1 ? `<br>${f.name} (${f.members.length} committees)` : '')+`</div>`+
+    (f && f.members.length>1 ? `<br>${esc(f.name)} (${f.members.length} committees)` : '')+`</div>`+
     (allies.length ? `<div class="allies">Shares vendors with:<br>`+
-      allies.map(a=>`<span class="a">${a.o.name.slice(0,30)}</span> <span class="j">— ${a.shared} shared (${(a.j*100).toFixed(0)}%)</span>`+
-        (a.vendors.length ? `<br><span class="v">via ${a.vendors.slice(0,3).join(', ')}</span>` : '')).join('<br>')+`</div>` : '');
+      allies.map(a=>{
+        const names = a.vendors.slice(0,4).map(v=>esc(v[0]));
+        const more = a.shared - names.length;
+        return `<span class="a">${esc(a.o.name.slice(0,30))}</span> <span class="j">— ${a.shared} shared (${(a.j*100).toFixed(0)}%)</span>`+
+          (names.length ? `<br><span class="v">via ${names.join(', ')}${more>0?` +${more} more`:''}</span>` : '');
+      }).join('<br>')+`</div><div class="tiphint">click for the full shared-vendor sheet →</div>` : '');
   tip.style.display='block';
   const tw = tip.offsetWidth, th = tip.offsetHeight;
   tip.style.left = Math.min(px+14, W-tw-10)+'px';
   tip.style.top  = Math.min(py+14, H-th-10)+'px';
 }
+
+// ── detail panel: the full shared-vendor sheet for a clicked committee ────────
+const panel = document.getElementById('panel');
+function showPanel(n){
+  const allies = adj[n.id].map(e=>({ o:byId[e.a===n.id?e.b:e.a], shared:e.shared, j:ew(e), vendors:e.topVendors||[] }))
+    .sort((a,b)=>b.j-a.j);
+  const f = factionOf[n.id];
+  let html = `<div class="phead"><span class="pnm">${esc(n.name)}</span><button id="pclose" title="close" aria-label="close">×</button></div>`+
+    `<div class="pmeta">${(PARTY[n.party]||PARTY.OTH).label} · spent ${fmt(n.spend)} · ${n.nVendors.toLocaleString()} vendors`+
+    (f && f.members.length>1 ? ` · ${esc(f.name)}` : '')+`</div>`;
+  if(!allies.length){
+    html += `<div class="pnone">No shared-vendor links with other graph committees.</div>`;
+  } else {
+    allies.forEach(a=>{
+      html += `<div class="pally"><div class="pallyhd" data-id="${esc(a.o.id)}">`+
+        `<span class="an">${esc(a.o.name)}</span><span class="ac">${a.shared} shared · ${(a.j*100).toFixed(0)}%</span></div>`+
+        `<div class="pvend">`+
+        a.vendors.map(v=>`<span class="chip">${esc(v[0])} <b>·${v[1]}</b></span>`).join('')+
+        (a.shared > a.vendors.length ? `<span class="pmore">+${a.shared - a.vendors.length} more (long-tail one-offs)</span>` : '')+
+        `</div></div>`;
+    });
+  }
+  panel.innerHTML = html;
+  panel.style.display = 'block';
+  panel.scrollTop = 0;
+  document.getElementById('pclose').onclick = ()=>{
+    focus=null; hidePanel(); updateHash(); _needsDraw=true; requestAnimationFrame(tick);
+  };
+  panel.querySelectorAll('.pallyhd').forEach(el=> el.onclick = ()=>{
+    const t = byId[el.dataset.id];
+    if(t){ focus=t; hover=t; if(factionFocus!=null){ factionFocus=null; buildLegend(); } updateHash(); flyTo(t); showPanel(t); }
+  });
+}
+function hidePanel(){ panel.style.display='none'; }
 
 // Kick off last — after every const/function above is initialized — so the
 // synchronous inlined-data path can't hit a temporal-dead-zone reference.

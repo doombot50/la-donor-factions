@@ -10,8 +10,15 @@ Status: **proof-of-concept**. `build_vendor_factions.py` produces the graph
 (`vendor_factions.json`) and prints diagnostics; `vendor-factions.html` renders
 it as an interactive force-directed network (a sibling of donor-factions'
 `index.html` — same canvas engine, party/bloc coloring, search, zoom/pan). Its
-hover card names the *vendors* two committees share, which the donor graph
-can't do.
+hover card names the *vendors* two committees share, and **clicking a committee
+opens a full shared-vendor sheet** — every operative it shares and with whom,
+each vendor tagged with how many committees use it. Neither is possible on the
+donor graph.
+
+Each edge stores up to `EDGE_VENDORS` (40) shared vendors, ranked by **graph-glue**
+(how many committee-pairs a vendor ties together) so recognizable operatives lead
+over one-off local vendors; the exact shared *count* is always kept, and the sheet
+discloses "+N more" for pairs past the cap.
 
 ## Why it isn't a find-and-replace of build_factions.py
 
@@ -41,27 +48,38 @@ The build handles both:
   but the check is written to `BRET ALLAIN`). This single fix collapsed the
   trade-association false cluster from the graph.
 
-Net effect across iterations: 58 nodes / 120 edges (naive) → **39 nodes / 30
-edges**, and every surviving edge is a real operational tie.
+Net effect across iterations: at the top 300, 58 nodes / 120 edges (naive) →
+**39–42 nodes / ~35 edges**, every surviving edge a real operational tie.
+Widening to the **top 500** committees (the current default) yields **79 nodes /
+64 edges** and surfaces regional machines invisible at 300 (below).
 
-## What falls out (top 300 committees by service spend, 2000–2026)
+## What falls out (top 500 committees by service spend, 2000–2026)
 
-- **The independent-expenditure air war (12 committees).** Gumbo PAC, RGA,
-  Louisiana Federation for Children, Louisiana Kids Matter, Protect Louisiana's
-  Children, First Principles PAC, Keep the Lights On, Make Louisiana Great
-  Again — glued by shared **TV-station ad buys** (WGNO, WVUE, WDSU, WBRZ, WAFB,
-  KADN…) plus Public Policy Polling and NCC Media. These groups run the same air
-  war.
-- **The education-reform / business bloc (6 committees).** Stand for Children,
-  The Fund for Louisiana's Future, Alliance for Better Classrooms, Lane Grigsby
-  — glued by pollster **Baselice & Associates** and **Innovative Advertising**.
-- **The Landry / state-GOP bloc (3 committees).** Jeff Landry, Republican Party
-  of Louisiana, Cajun PAC II — glued by **Littlefield Consultants**, **Integram**,
-  **Spartan Public Affairs**.
+- **The independent-expenditure air war (12–15 committees).** Gumbo PAC, RGA,
+  Louisiana Federation for Children, Education Reform Now, Elizabeth Murrill,
+  Protect Louisiana's Children, First Principles PAC, Keep the Lights On, Make
+  Louisiana Great Again — glued by shared **TV-station ad buys** (WGNO, WVUE,
+  WDSU, WBRZ, WAFB, KADN…) plus Public Policy Polling and Ampersand. These groups
+  run the same air war.
+- **The education-reform / business bloc (6–8 committees).** Stand for Children,
+  The Fund for Louisiana's Future, Alliance for Better Classrooms, Lane Grigsby,
+  David Mancuso LA Water — glued by pollster **Baselice & Associates** and
+  **Innovative Advertising**.
+- **The Landry / state-GOP bloc.** Jeff Landry, Republican Party of Louisiana,
+  Cajun PAC II — glued by **Littlefield Consulting**, **Integram**, **Spartan
+  Public Affairs**.
 - **The Democratic legislative back office (pair).** House & Senate Democratic
   Campaign Committees — glued by **Michelle Brister's compliance consulting** and
   **Political CFOs**. (Donor-factions found this same pair on the *donor* side;
   here it's explained by shared back-office vendors.)
+- **New at top 500 — regional machines:** a **Jefferson Parish bloc** (~11
+  committees: Dominick Impastato, Arita Bohannan, John Fortunato, Deborah Villio,
+  Keith Conley) glued by local shops (Christy Cannella, Pelican/Vivid Ink
+  graphics, RSVP Decorating); a **Shreveport conservative cluster** (Robert Mills,
+  John Nickelson) glued by **AX Media** + **WPA Intelligence** (a national GOP
+  pollster) + KEEL-AM; and a **Lafourche officialdom cluster** (Sheriff Craig
+  Webre, DA Kristine Russell), though that one leans on shared *civic
+  sponsorships* (schools, the Chamber) more than paid operatives.
 - Named vendors like **Huckaby Davis Lisker** (GOP compliance), **Go Big Media**,
   **People Who Think**, **Arsement Media Group** surface as genuine shared
   operatives.

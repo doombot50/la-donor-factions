@@ -50,11 +50,15 @@ def _default_cache():
 CACHE = _arg('--cache', '') or os.environ.get('LA_CACHE') or _default_cache()
 OUT   = os.path.join(HERE, 'vendor_factions.json')
 
-TOP_N        = _arg('--top', 300)          # committees in the graph (by service spend)
+TOP_N        = _arg('--top', 500)          # committees in the graph (by service spend)
 STOPWORD_DF  = _arg('--stopword-df', 100)  # a vendor paid by >= this many committees is commodity → dropped
 MIN_SHARED   = _arg('--min-shared', 3)     # an edge needs this many shared non-stopword vendors
 MIN_WJACCARD = _arg('--min-wjaccard', 0.06)  # ...and this IDF-weighted overlap
 MAX_PER_NODE = _arg('--max-per-node', 6)   # keep each node's strongest links
+EDGE_VENDORS = _arg('--edge-vendors', 40)  # shared vendors stored per edge (for the detail panel)
+INTEREST_PEAK = 20  # "most interesting" shared vendor serves ~this many committees:
+#                     rarer ones are likely one-off noise, common ones near-commodity
+#                     (boutique operatives — Littlefield, Baselice — sit around here)
 
 if not os.path.isdir(CACHE):
     sys.exit(f'No .la_cache at {CACHE!r}. Pass --cache <path> or set $LA_CACHE.')
@@ -309,9 +313,24 @@ for _pat, _canon in _FIRM_CANON:
 def _disp(v):
     return disp.get(v, v)
 
+# Rank a pair's shared vendors for display. Primary signal: graph-GLUE — how many
+# kept committee-pairs a vendor ties together. An operative (Littlefield, Baselice)
+# glues many pairs; a hotel or a burrito shop two committees happened to share
+# glues none, so it sinks. DF alone can't tell a media firm from a caterer, but
+# "does this vendor connect the graph" can. Ties break by an interestingness band
+# peaking at INTEREST_PEAK committees, then name. Store [label, DF] so the panel
+# can disclose how common each vendor is.
+glue_ct = Counter()
+for _k, (sv, _wj, _j) in keep.items():
+    for v in sv:
+        glue_ct[v] += 1
+def _interest(v):
+    d = df.get(v, 0)
+    return d if d <= INTEREST_PEAK else 2 * INTEREST_PEAK - d
 edges = []
 for (a, b), (sv, wj, j) in keep.items():
-    top_sv = [_disp(v) for v in sorted(sv, key=lambda v: -idf.get(v, 0.0))[:6]]
+    ranked = sorted(sv, key=lambda v: (-glue_ct[v], -_interest(v), _disp(v)))[:EDGE_VENDORS]
+    top_sv = [[_disp(v), df.get(v, 0)] for v in ranked]
     edges.append({'a': a, 'b': b, 'shared': len(sv), 'jaccard': round(j, 4),
                   'wjaccard': round(wj, 4), 'topVendors': top_sv})
 
@@ -339,7 +358,7 @@ print('\nStrongest shared-vendor links (weighted Jaccard):')
 for e in sorted(edges, key=lambda e: -e['wjaccard'])[:14]:
     print(f"  {nm[e['a']][:26]:<26} <-> {nm[e['b']][:26]:<26}  "
           f"{e['shared']:>3} shared  wJ={e['wjaccard']:.2f}")
-    print(f"        via: {', '.join(v[:26] for v in e['topVendors'])}")
+    print(f"        via: {', '.join(tv[0][:26] for tv in e['topVendors'][:6])}")
 
 # Connected components over kept edges = candidate vendor blocs; name each by the
 # vendor that glues it (most-shared across the bloc's internal edges).
@@ -383,8 +402,8 @@ for comp in sorted(comps, key=len, reverse=True)[:10]:
     glue = Counter()
     for e in edges:
         if e['a'] in comp and e['b'] in comp:
-            for v in e['topVendors']:
-                glue[v] += 1
+            for tv in e['topVendors']:
+                glue[tv[0]] += 1
     gl = ', '.join(f'{v}' for v, _ in glue.most_common(4))
     members = ', '.join(nm[f][:22] for f in sorted(comp, key=lambda f: -spend[f])[:5])
     print(f'  [{len(comp):>2} committees] glue: {gl}')
