@@ -50,8 +50,8 @@ The build handles both:
 
 Net effect across iterations: at the top 300, 58 nodes / 120 edges (naive) →
 **39–42 nodes / ~35 edges**, every surviving edge a real operational tie.
-Widening to the **top 500** committees (the current default) yields **79 nodes /
-64 edges** and surfaces regional machines invisible at 300 (below).
+Widening to the **top 500** committees (the current default) yields **~78 nodes /
+63 edges** and surfaces regional machines invisible at 300 (below).
 
 ## What falls out (top 500 committees by service spend, 2000–2026)
 

@@ -96,8 +96,10 @@ _GENERIC = {'CONSULTING', 'CONSULTANTS', 'CONSULTANT', 'ASSOCIATES', 'ASSOCIATIO
 # entity under different names. NCC Media (National Cable Communications) is the
 # cable-ad rep that rebranded as Ampersand, so its many spellings are one vendor.
 _FIRM_CANON = [
-    (re.compile(r'^NCC\b'),       'AMPERSAND'),
-    (re.compile(r'^AMPERSAND\b'), 'AMPERSAND'),
+    (re.compile(r'^NCC\b'),                   'AMPERSAND'),
+    (re.compile(r'^AMPERSAND\b'),             'AMPERSAND'),
+    (re.compile(r'^INNOVATIVE ADVERTISING\b'), 'PEOPLE WHO THINK'),
+    (re.compile(r'^PEOPLE WHO THINK\b'),       'PEOPLE WHO THINK'),
 ]
 def resolve_key(nv):
     s = nv[4:] if nv.startswith('THE ') else nv
