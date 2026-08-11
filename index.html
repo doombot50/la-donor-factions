@@ -100,10 +100,21 @@ const PARTY = {
   GRN:{c:'#36a86f',label:'Green'}, OTH:{c:'#7d8b95',label:'Other / committee'},
 };
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d'), tip = document.getElementById('tip');
-let W, H, DPR = Math.min(window.devicePixelRatio||1, 2);
-function resize(){ W=window.innerWidth; H=window.innerHeight; cv.width=W*DPR; cv.height=H*DPR;
+let W, H, DPR = 1;
+function resize(){
+  // Re-read the ratio every time: browser zoom and dragging the window to
+  // another display change it, and a stale one renders the canvas blurry.
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  W=window.innerWidth; H=window.innerHeight; cv.width=W*DPR; cv.height=H*DPR;
   cv.style.width=W+'px'; cv.style.height=H+'px'; ctx.setTransform(DPR,0,0,DPR,0,0); }
-window.addEventListener('resize', () => { resize(); draw(); });
+window.addEventListener('resize', () => {
+  const pw=W, ph=H; resize();
+  // Keep whatever world point was centered centered, so a phone rotation or a
+  // window resize doesn't shove the graph off-screen (nothing refits it later:
+  // the settled-layout fit only runs once).
+  if(pw && ph){ view.x += (W-pw)/2; view.y += (H-ph)/2; }
+  draw();
+});
 resize();
 
 let nodes=[], edges=[], byId={}, adj={};
@@ -112,9 +123,23 @@ let META=null, colorMode='party', factions=[], factionOf={}, factionFocus=null;
 let weightMode='donors';   // 'donors' (count Jaccard) | 'dollars' (weighted Jaccard)
 // Edge weight under the active mode; old factions.json without wjaccard falls back.
 function ew(e){ return weightMode==='dollars' && e.wjaccard!=null ? e.wjaccard : e.jaccard; }
-let pendingHash = decodeURIComponent(location.hash.slice(1)||'');
+// A hand-edited or truncated link can leave a stray '%' in the hash, and
+// decodeURIComponent throws URIError on one — at top level that would kill the
+// whole script and render a blank page. Fall back to the raw hash.
+let pendingHash = (function(){
+  const h = location.hash.slice(1);
+  if(!h) return '';
+  try { return decodeURIComponent(h); } catch(e){ return h; }
+})();
 
-fetch('./factions.json').then(r=>r.json()).then(data=>{
+fetch('./factions.json').then(r=>{
+  if(!r.ok) throw new Error('HTTP '+r.status+' fetching factions.json');
+  return r.json();
+}).then(data=>{
+  // A missing, empty or half-written artifact used to hang on "Loading the
+  // network…" forever (or throw into an unhandled rejection); say what broke.
+  if(!data || !Array.isArray(data.nodes) || !data.nodes.length || !Array.isArray(data.edges))
+    throw new Error('factions.json carries no nodes/edges — the build wrote an empty graph');
   document.getElementById('loading').style.display='none';
   nodes = data.nodes; edges = data.edges;
   byId = Object.fromEntries(nodes.map(n=>[n.id,n]));
@@ -135,7 +160,12 @@ fetch('./factions.json').then(r=>r.json()).then(data=>{
   computeFactions();
   buildLegend();
   buildSearch();
-  requestAnimationFrame(tick);
+  schedule();
+}).catch(err=>{
+  console.error(err);
+  const el = document.getElementById('loading');
+  el.style.display='flex';
+  el.textContent = "Couldn't load the network — "+err.message;
 });
 
 // ── faction detection ────────────────────────────────────────────────────────
@@ -260,12 +290,12 @@ function buildLegend(){
   legend.querySelectorAll('.row.f').forEach(el=>el.onclick = ()=>{
     const fid = +el.dataset.f;
     factionFocus = (factionFocus===fid) ? null : fid;
-    buildLegend(); _needsDraw=true; requestAnimationFrame(tick);
+    buildLegend(); _needsDraw=true; schedule();
   });
 }
 function setMode(m){
   colorMode = m; if(m==='party') factionFocus = null;
-  buildLegend(); _needsDraw=true; requestAnimationFrame(tick);
+  buildLegend(); _needsDraw=true; schedule();
 }
 function setWeight(m){
   if(m===weightMode) return;
@@ -275,7 +305,7 @@ function setWeight(m){
   alpha = Math.max(alpha, 0.6);                    // re-settle springs...
   _fitted = false; _settledFit = false; _userView = false;   // ...then refit the view
   if(hover) showTip(hover, sx(hover), sy(hover));
-  _needsDraw=true; requestAnimationFrame(tick);
+  _needsDraw=true; schedule();
 }
 
 // ── search: type a committee name to fly to it ──────────────────────────────
@@ -300,7 +330,7 @@ function flyTo(n){
     const p = Math.min(1, (t-t0)/450), e = p*(2-p);   // ease-out
     const tx = W/2 - n.x*k, ty = H/2 - n.y*k;          // chase the node if it's still settling
     view.x = from.x+(tx-from.x)*e; view.y = from.y+(ty-from.y)*e; view.k = from.k+(k-from.k)*e;
-    _needsDraw=true; requestAnimationFrame(tick);
+    _needsDraw=true; schedule();
     if(p<1) requestAnimationFrame(anim);
     else if(focus===n) showTip(n, sx(n), sy(n));
   })(t0);
@@ -352,6 +382,13 @@ function fitView(){
   view.y = H/2 - (minY+maxY)/2*view.k;
 }
 let _needsDraw=false, _fitted=false, _settledFit=false, _userView=false;
+// Every interaction asks for a frame, and tick() re-arms itself while the layout
+// is live. Queueing tick directly meant a burst of mousemoves stacked several
+// self-sustaining chains on top of each other, so step() ran N times per frame
+// and the simulation settled at a speed that depended on mouse activity. One
+// pending frame at a time.
+let _raf=0;
+function schedule(){ if(_raf) return; _raf=requestAnimationFrame(()=>{ _raf=0; tick(); }); }
 function tick(){
   const wasLive = alpha>0;
   if(alpha>0.02){ step(); alpha*=0.992; } else alpha=0;
@@ -366,9 +403,9 @@ function tick(){
     _settledFit=true; if(!_userView) fitView();
   }
   draw();
-  if(alpha>0 || _needsDraw){ _needsDraw=false; requestAnimationFrame(tick); }
+  if(alpha>0 || _needsDraw){ _needsDraw=false; schedule(); }
 }
-function kick(){ if(alpha<0.05){ alpha=0.2; } _needsDraw=true; requestAnimationFrame(tick); }
+function kick(){ if(alpha<0.05){ alpha=0.2; } _needsDraw=true; schedule(); }
 
 // ── rendering ──────────────────────────────────────────────────────────────
 function sx(n){ return view.x + n.x*view.k; }
@@ -420,29 +457,34 @@ function nodeAt(px,py){
     const rr=(n.r*Math.sqrt(view.k)+4)**2; if(d<rr && d<bestD){ best=n; bestD=d; } }
   return best;
 }
-let dragNode=null, panning=false, last={x:0,y:0};
+// `last` is the previous move position (it drives the pan delta, so it tracks
+// the cursor); `downAt` is where the gesture started and never moves. The click
+// handler needs the latter — comparing against `last` made every drag look like
+// a click at its own release point, so panning across the canvas cleared the
+// focused node (and its permalink) or focused whatever it was released over.
+let dragNode=null, panning=false, last={x:0,y:0}, downAt={x:0,y:0};
 cv.addEventListener('mousedown', ev=>{
   const n = nodeAt(ev.clientX, ev.clientY);
   if(n){ dragNode=n; } else { panning=true; cv.classList.add('grabbing'); }
-  last={x:ev.clientX,y:ev.clientY};
+  last={x:ev.clientX,y:ev.clientY}; downAt={x:ev.clientX,y:ev.clientY};
 });
 window.addEventListener('mousemove', ev=>{
   if(dragNode){ dragNode.x=(ev.clientX-view.x)/view.k; dragNode.y=(ev.clientY-view.y)/view.k; dragNode.vx=dragNode.vy=0; kick(); return; }
-  if(panning){ _userView=true; view.x+=ev.clientX-last.x; view.y+=ev.clientY-last.y; last={x:ev.clientX,y:ev.clientY}; _needsDraw=true; requestAnimationFrame(tick); return; }
+  if(panning){ _userView=true; view.x+=ev.clientX-last.x; view.y+=ev.clientY-last.y; last={x:ev.clientX,y:ev.clientY}; _needsDraw=true; schedule(); return; }
   const n = nodeAt(ev.clientX, ev.clientY);
-  if(n!==hover){ hover=n; _needsDraw=true; requestAnimationFrame(tick); }
+  if(n!==hover){ hover=n; _needsDraw=true; schedule(); }
   if(n) showTip(n, ev.clientX, ev.clientY); else tip.style.display='none';
 });
 window.addEventListener('mouseup', ()=>{ dragNode=null; panning=false; cv.classList.remove('grabbing'); });
 cv.addEventListener('click', ev=>{
-  if(Math.abs(ev.clientX-last.x)>4||Math.abs(ev.clientY-last.y)>4) return;
+  if(Math.abs(ev.clientX-downAt.x)>4||Math.abs(ev.clientY-downAt.y)>4) return;
   const n = nodeAt(ev.clientX, ev.clientY);
-  focus = (n===focus) ? null : n; updateHash(); _needsDraw=true; requestAnimationFrame(tick);
+  focus = (n===focus) ? null : n; updateHash(); _needsDraw=true; schedule();
 });
 window.addEventListener('keydown', ev=>{
   if(ev.key==='Escape'){
     focus=null; hover=null; factionFocus=null; tip.style.display='none';
-    updateHash(); buildLegend(); _needsDraw=true; requestAnimationFrame(tick);
+    updateHash(); buildLegend(); _needsDraw=true; schedule();
   }
 });
 // Zoom by factor f, keeping the screen point (cx,cy) fixed.
@@ -450,7 +492,7 @@ function zoomAt(cx, cy, f){
   _userView=true;
   view.x = cx - (cx-view.x)*f;
   view.y = cy - (cy-view.y)*f;
-  view.k *= f; _needsDraw=true; requestAnimationFrame(tick);
+  view.k *= f; _needsDraw=true; schedule();
 }
 cv.addEventListener('wheel', ev=>{
   ev.preventDefault();
@@ -471,6 +513,9 @@ cv.addEventListener('touchstart', ev=>{
     touchMoved=false;
   } else if(t.length>=2){
     dragNode=null; panning=false;          // hand off to pinch
+    // A pinch is never a tap: without this, lifting both fingers with no
+    // touchmove in between would replay the *previous* tap's coordinates.
+    touchMoved=true;
     pinchDist = touchDist(t); pinchMid = touchMid(t);
   }
 }, {passive:false});
@@ -483,12 +528,12 @@ cv.addEventListener('touchmove', ev=>{
     // also pan with the midpoint so two-finger drag moves the graph
     view.x += m.x-pinchMid.x; view.y += m.y-pinchMid.y;
     pinchDist=d; pinchMid=m; touchMoved=true;
-    _needsDraw=true; requestAnimationFrame(tick);
+    _needsDraw=true; schedule();
   } else if(t.length===1){
     const x=t[0].clientX, y=t[0].clientY;
     if(Math.abs(x-tapStart.x)>4||Math.abs(y-tapStart.y)>4) touchMoved=true;
     if(dragNode){ dragNode.x=(x-view.x)/view.k; dragNode.y=(y-view.y)/view.k; dragNode.vx=dragNode.vy=0; kick(); }
-    else if(panning){ _userView=true; view.x+=x-last.x; view.y+=y-last.y; _needsDraw=true; requestAnimationFrame(tick); }
+    else if(panning){ _userView=true; view.x+=x-last.x; view.y+=y-last.y; _needsDraw=true; schedule(); }
     last={x,y};
   }
 }, {passive:false});
@@ -501,7 +546,7 @@ cv.addEventListener('touchend', ev=>{
       if(n) showTip(n, tapStart.x, tapStart.y); else tip.style.display='none';
     }
     dragNode=null; panning=false; pinchDist=0;
-    _needsDraw=true; requestAnimationFrame(tick);
+    _needsDraw=true; schedule();
   } else if(ev.touches.length===1){
     // dropped from pinch to one finger — resume panning from here
     panning=true; dragNode=null; pinchDist=0;
