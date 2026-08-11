@@ -22,14 +22,22 @@ Stdlib only — a small, single-story spin-off, like the pay-to-play tool.
     py build_factions.py
     py build_factions.py --cache "../Claude Code/.la_cache" --top 350
 """
-import gzip, json, os, glob, sys, time
+import gzip, json, os, glob, re, sys, time, zlib
 from collections import defaultdict, Counter
 from itertools import combinations
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 def _arg(flag, default):
-    return type(default)(sys.argv[sys.argv.index(flag) + 1]) if flag in sys.argv else default
+    if flag not in sys.argv:
+        return default
+    i = sys.argv.index(flag) + 1
+    if i >= len(sys.argv):
+        sys.exit(f'{flag} needs a value.')
+    try:
+        return type(default)(sys.argv[i])
+    except ValueError:
+        sys.exit(f'{flag} expects {type(default).__name__}, got {sys.argv[i]!r}.')
 
 def _default_cache():
     # Works whether this tool sits inside the CF repo or as a sibling of it.
@@ -43,13 +51,39 @@ def _default_cache():
 CACHE = _arg('--cache', '') or os.environ.get('LA_CACHE') or _default_cache()
 OUT   = os.path.join(HERE, 'factions.json')
 
-TOP_N        = _arg('--top', 250)         # filers in the graph (by lifetime raised)
-MIN_SHARED   = _arg('--min-shared', 25)   # an edge needs at least this many shared donors
-MIN_JACCARD  = _arg('--min-jaccard', 0.04)  # ...and this overlap (controls for size)
+# Defaults reproduce the shipped factions.json (the "widen the network" build).
+TOP_N        = _arg('--top', 600)         # filers in the graph (by lifetime raised)
+MIN_SHARED   = _arg('--min-shared', 12)   # an edge needs at least this many shared donors
+MIN_JACCARD  = _arg('--min-jaccard', 0.05)  # ...and this overlap (controls for size)
 MAX_PER_NODE = _arg('--max-per-node', 6)  # keep each node's strongest links
+ALLOW_GAPS   = '--allow-gaps' in sys.argv   # build anyway from an incomplete cache
 
 if not os.path.isdir(CACHE):
     sys.exit(f'No .la_cache at {CACHE!r}. Pass --cache <path> or set $LA_CACHE.')
+
+# ── cache completeness ──────────────────────────────────────────────────────
+# Checked BEFORE any work, because both failure modes here are silent: an empty
+# cache would write an empty factions.json over the committed one, and a cache
+# missing a year (an interrupted `gh release upload --clobber` strands assets —
+# that is how contributions_yr2003 went missing upstream) would understate every
+# lifetime total and every donor overlap while looking perfectly healthy.
+# Contributions exist for every year upstream, so the years must be contiguous.
+CYCLE_FILES = sorted(glob.glob(os.path.join(CACHE, 'contributions_yr*.json.gz')))
+if not CYCLE_FILES:
+    sys.exit(f'No contributions_yr*.json.gz in {CACHE!r} — nothing to build. Point '
+             f'--cache at the campaign-finance .la_cache (its fetch_cache_assets.py '
+             f'seeds one from the data-cache release). Refusing to overwrite {OUT}.')
+YEARS = sorted(int(m.group(1)) for m in
+               (re.search(r'contributions_yr(\d{4})', os.path.basename(p)) for p in CYCLE_FILES)
+               if m)
+GAPS = [y for y in range(YEARS[0], YEARS[-1] + 1) if y not in YEARS] if YEARS else []
+if GAPS:
+    msg = (f'Cache is missing contribution year(s) {GAPS} inside {YEARS[0]}–{YEARS[-1]}. '
+           f'Lifetime totals and donor overlaps would be understated. Re-fetch the '
+           f'data-cache release assets, or pass --allow-gaps to build anyway.')
+    if not ALLOW_GAPS:
+        sys.exit(msg)
+    print(f'  WARNING: {msg}')
 
 # ── resolved donor identity ─────────────────────────────────────────────────
 # Invert la_donor_entities: raw contributor spelling (UPPER) -> cluster id.
@@ -59,27 +93,49 @@ def load_donor_map():
     if not os.path.exists(p):
         print('  note: la_donor_entities.json.gz absent — falling back to raw names')
         return None
-    with gzip.open(p, 'rt', encoding='utf-8') as f:
-        donors = json.load(f)['donors']
+    # An ABSENT artifact is a legitimate cold cache (raw-name fallback, disclosed
+    # in the output). A PRESENT but unreadable one — half-written, truncated by an
+    # interrupted download — must not quietly downgrade donor identity: that would
+    # silently change every overlap figure in the graph. Fail and say so.
+    try:
+        with gzip.open(p, 'rt', encoding='utf-8') as f:
+            donors = json.load(f)['donors']
+    except (OSError, EOFError, zlib.error, ValueError, KeyError) as e:
+        sys.exit(f'Unreadable donor-entity artifact {p}: {e!r}\nRe-fetch it (the '
+                 f'campaign-finance data-cache release), or delete it to build with '
+                 f'raw-name donor identity.')
     raw2cid = {}
     for cid, d in donors.items():
-        if d.get('variants'):
-            for raw in d['variants']:
-                raw2cid[raw] = cid
-        else:
-            raw2cid[d['name']] = cid
+        # Multi-variant clusters list every raw spelling; single-variant ones
+        # store their lone raw as `name`.
+        for raw in (d.get('variants') or ([d['name']] if d.get('name') else [])):
+            raw2cid[raw] = cid
+    if not raw2cid:
+        sys.exit(f'{p} resolved 0 donor spellings — the artifact looks empty or partial.')
     return raw2cid
 
 raw2cid = load_donor_map()
 def donor_id(raw_upper):
     return raw2cid.get(raw_upper, raw_upper) if raw2cid else raw_upper
 
+# Bulk-data placeholders that are not nameable donors: LA Ethics aggregate and
+# adjustment rows ("UNITEMIZED CONTRIBUTIONS", "ANONYMOUS", "MISCELLANEOUS",
+# "NON LA TRANSACTIONS"...). The upstream resolver drops them, so they are absent
+# from la_donor_entities and would fall through donor_id() to their raw string —
+# where each reads as one REAL donor shared by nearly every committee that files
+# such a line, manufacturing edges out of nothing and inflating the dollar-
+# weighted overlap (unitemized rows carry large sums). Kept identical to
+# _NONDONOR in the campaign-finance repo's build_donor_entities.py: the two must
+# stay in lockstep so every raw either resolves or is excluded here.
+_NONDONOR = re.compile(
+    r'\bNON LA\b|NEGATIVE DISBURSE|UNITEMIZED|\bAGGREGATE\b|\bANONYMOUS\b|'
+    r'MISCELLANEOUS|NO NAME (GIVEN|PROVIDED|LISTED)|NOT (PROVIDED|LISTED|APPLICABLE)', re.I)
+
 # ── office lookup ───────────────────────────────────────────────────────────
 # SoS candidacies (campaign-finance repo, committed at its root — the cache's
 # parent) tell us what office a committee's candidate ran for. The viz names
 # factions by their dominant office class ("Sheriffs", "Republican
 # legislators"), which beats naming a bloc after whichever member raised most.
-import re
 def _norm_name(name):
     n = name.upper()
     n = re.sub(r'\b(DR|MR|MRS|MS|JR|SR|II|III|IV|ESQ|PHD|MD)\.?\b', '', n)
@@ -189,14 +245,30 @@ def _office_class(rows):
     # the most recent run is who they are now (legislator -> judge => Judge)
     return max(dated)[1] if dated else None
 
+_scan = {'bad': 0}      # unparseable lines seen in the current pass
+
 def _rows():
-    for path in sorted(glob.glob(os.path.join(CACHE, 'contributions_yr*.json.gz'))):
-        with gzip.open(path, 'rt', encoding='utf-8') as f:
-            for line in f:
-                try:
-                    yield json.loads(line)
-                except Exception:
-                    continue
+    for path in CYCLE_FILES:
+        try:
+            with gzip.open(path, 'rt', encoding='utf-8') as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        yield json.loads(line)
+                    except json.JSONDecodeError:
+                        _scan['bad'] += 1
+        except (OSError, EOFError, zlib.error) as e:
+            # A truncated/corrupt .json.gz is a partial download. Silently
+            # returning its readable prefix would drop part of a year from every
+            # total; name the file and stop instead.
+            sys.exit(f'Corrupt or truncated cache file {path}: {e!r}\nRe-fetch it '
+                     f'(the campaign-finance data-cache release).')
+
+def _report_scan(pass_name):
+    if _scan['bad']:
+        print(f'  WARNING: {pass_name} skipped {_scan["bad"]:,} unparseable line(s)')
+    _scan['bad'] = 0
 
 def _is_donor_gift(r):
     # A real outside donation — not a committee-to-committee transfer or filing fee.
@@ -211,6 +283,7 @@ for r in _rows():
         raised[fn] += float(r.get('amount') or 0)
 top = {fn for fn, _ in sorted(raised.items(), key=lambda x: -x[1])[:TOP_N]}
 print(f'Pass 1: {len(raised):,} filers; kept top {len(top)} by raised ({time.time()-t0:.0f}s)')
+_report_scan('pass 1')
 
 # Pass 2: resolved-donor sets + per-donor dollars for the top filers + display name/party.
 donors  = defaultdict(set)        # filer -> {donor cluster id}
@@ -227,7 +300,7 @@ for r in _rows():
     if not _is_donor_gift(r):
         continue
     raw = (r.get('contributor') or '').strip().upper()
-    if not raw or raw == 'UNKNOWN':
+    if not raw or raw == 'UNKNOWN' or _NONDONOR.search(raw):
         continue
     cid = donor_id(raw)
     donors[fn].add(cid)
@@ -235,6 +308,7 @@ for r in _rows():
     d[cid] = d.get(cid, 0.0) + float(r.get('amount') or 0)
     donor_to_filers[cid].add(fn)
 print(f'Pass 2: donor sets built for {len(donors)} filers ({time.time()-t0:.0f}s)')
+_report_scan('pass 2')
 
 # Pairwise shared-donor counts via co-occurrence (sparse: a donor giving to k of
 # the top filers contributes to C(k,2) pairs).
@@ -277,7 +351,8 @@ def _dollar_weight(a, b):
     return smin, (smin / smax if smax > 0 else 0.0)
 
 edges = []
-for (a, b, sc, j) in keep:
+for (a, b, sc, j) in sorted(keep):      # sorted: `keep` is a set, so iterating it
+                                        # would reorder the artifact run to run
     sd, wj = _dollar_weight(a, b)
     edges.append({'a': a, 'b': b, 'shared': sc, 'jaccard': j,
                   'sharedDollars': round(sd), 'wjaccard': round(wj, 4)})
@@ -298,7 +373,10 @@ def _party(fn):
     return p if p in ('DEM', 'REP', 'IND', 'LBT', 'GRN') else 'OTH'
 offices = load_offices()
 nodes = []
-for fn in sorted(node_ids, key=lambda f: -raised[f]):
+for fn in sorted(node_ids, key=lambda f: (-raised[f], f)):   # filer breaks ties so
+                                                            # equal-raised nodes keep
+                                                            # a stable order (node_ids
+                                                            # is a set)
     name = names[fn].most_common(1)[0][0] if names[fn] else f'Filer {fn}'
     n = {
         'id': fn,
@@ -320,8 +398,16 @@ out = {
     'nodes': nodes,
     'edges': edges,
 }
-with open(OUT, 'w', encoding='utf-8') as f:
+# factions.json is the committed, deployed artifact and the page renders nothing
+# without it, so never leave it empty or half-written.
+if not nodes or not edges:
+    sys.exit(f'Refusing to write {OUT}: built {len(nodes)} nodes / {len(edges)} edges '
+             f'from {len(CYCLE_FILES)} year file(s) and {len(raised):,} filers. '
+             f'Thresholds too high, or the cache is incomplete.')
+tmp = OUT + '.tmp'
+with open(tmp, 'w', encoding='utf-8') as f:
     json.dump(out, f, separators=(',', ':'), ensure_ascii=False)
+os.replace(tmp, OUT)
 
 print(f'\nWrote {OUT}: {len(nodes)} nodes, {len(edges)} edges '
       f'[{out["donor_identity"]} donors] ({time.time()-t0:.0f}s)')
