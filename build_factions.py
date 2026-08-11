@@ -56,6 +56,7 @@ TOP_N        = _arg('--top', 600)         # filers in the graph (by lifetime rai
 MIN_SHARED   = _arg('--min-shared', 12)   # an edge needs at least this many shared donors
 MIN_JACCARD  = _arg('--min-jaccard', 0.05)  # ...and this overlap (controls for size)
 MAX_PER_NODE = _arg('--max-per-node', 6)  # keep each node's strongest links
+EDGE_DONORS  = _arg('--edge-donors', 12)  # receipts: top shared donors kept per edge
 ALLOW_GAPS   = '--allow-gaps' in sys.argv   # build anyway from an incomplete cache
 
 if not os.path.isdir(CACHE):
@@ -291,6 +292,12 @@ dollars = defaultdict(dict)       # filer -> {donor cluster id: total $ given}
 names   = defaultdict(Counter)    # filer -> {candidate spelling: count}
 parties = defaultdict(Counter)    # filer -> {party: count}
 donor_to_filers = defaultdict(set)
+# Per cluster, the AS-IN-ROWS contributor spelling carrying the most dollars.
+# The edge receipts link each shared donor to the finance portal's #/donor/
+# profile, and that route matches the row's contributor string EXACTLY (original
+# case) — the uppercased cluster variants in la_donor_entities would miss. The
+# top-dollar spelling also shows the biggest slice of a merged cluster there.
+spellings = defaultdict(Counter)  # donor cluster id -> {original spelling: $}
 for r in _rows():
     fn = (r.get('filerNumber') or '').strip()
     if fn not in top:
@@ -299,14 +306,17 @@ for r in _rows():
     if r.get('party'):     parties[fn][r['party']] += 1
     if not _is_donor_gift(r):
         continue
-    raw = (r.get('contributor') or '').strip().upper()
+    orig = (r.get('contributor') or '').strip()
+    raw = orig.upper()
     if not raw or raw == 'UNKNOWN' or _NONDONOR.search(raw):
         continue
     cid = donor_id(raw)
+    amt = float(r.get('amount') or 0)
     donors[fn].add(cid)
     d = dollars[fn]
-    d[cid] = d.get(cid, 0.0) + float(r.get('amount') or 0)
+    d[cid] = d.get(cid, 0.0) + amt
     donor_to_filers[cid].add(fn)
+    spellings[cid][orig] += amt
 print(f'Pass 2: donor sets built for {len(donors)} filers ({time.time()-t0:.0f}s)')
 _report_scan('pass 2')
 
@@ -350,12 +360,41 @@ def _dollar_weight(a, b):
     smax = dtotal.get(a, 0.0) + dtotal.get(b, 0.0) - smin
     return smin, (smin / smax if smax > 0 else 0.0)
 
+# Edge receipts: the top shared donors behind each surviving link, so the viz
+# can show WHO an overlap is instead of only how big it is. Ranked by
+# min($ to A, $ to B) — the same quantity sharedDollars sums — so "top" means
+# the donors carrying the most money through the overlap itself, not donors
+# who mostly fund one side. Names are deduped through one artifact-level table
+# (a big donor recurs across many edges) and referenced by index.
+donor_names = []                  # artifact-level display-name table
+_name_ix = {}                     # donor cluster id -> index into donor_names
+def _donor_ix(cid):
+    ix = _name_ix.get(cid)
+    if ix is None:
+        sp = spellings.get(cid)
+        name = max(sp.items(), key=lambda kv: kv[1])[0] if sp else str(cid)
+        ix = _name_ix[cid] = len(donor_names)
+        donor_names.append(name)
+    return ix
+
+def _top_shared(a, b):
+    da, db = dollars[a], dollars[b]
+    if len(db) < len(da):
+        da, db = db, da
+    ranked = sorted(((min(va, db[cid]), va + db[cid], cid)
+                     for cid, va in da.items() if cid in db and min(va, db[cid]) > 0),
+                    key=lambda t: (-t[0], -t[1], t[2]))[:EDGE_DONORS]
+    # da may be either side after the swap above — report $ per FILER, not per dict
+    return [[_donor_ix(cid), round(dollars[a].get(cid, 0.0)), round(dollars[b].get(cid, 0.0))]
+            for _, _, cid in ranked]
+
 edges = []
 for (a, b, sc, j) in sorted(keep):      # sorted: `keep` is a set, so iterating it
                                         # would reorder the artifact run to run
     sd, wj = _dollar_weight(a, b)
     edges.append({'a': a, 'b': b, 'shared': sc, 'jaccard': j,
-                  'sharedDollars': round(sd), 'wjaccard': round(wj, 4)})
+                  'sharedDollars': round(sd), 'wjaccard': round(wj, 4),
+                  'top': _top_shared(a, b)})
 
 # Nodes that survive in at least one edge, with metadata for the viz.
 node_ids = {e['a'] for e in edges} | {e['b'] for e in edges}
@@ -394,7 +433,9 @@ out = {
     'generated': time.strftime('%Y-%m-%d'),
     'donor_identity': 'resolved' if raw2cid else 'raw-name',
     'params': {'top': TOP_N, 'min_shared': MIN_SHARED,
-               'min_jaccard': MIN_JACCARD, 'max_per_node': MAX_PER_NODE},
+               'min_jaccard': MIN_JACCARD, 'max_per_node': MAX_PER_NODE,
+               'edge_donors': EDGE_DONORS},
+    'donors': donor_names,
     'nodes': nodes,
     'edges': edges,
 }
@@ -409,7 +450,8 @@ with open(tmp, 'w', encoding='utf-8') as f:
     json.dump(out, f, separators=(',', ':'), ensure_ascii=False)
 os.replace(tmp, OUT)
 
-print(f'\nWrote {OUT}: {len(nodes)} nodes, {len(edges)} edges '
+print(f'\nWrote {OUT}: {len(nodes)} nodes, {len(edges)} edges, '
+      f'{len(donor_names)} named receipt donors '
       f'[{out["donor_identity"]} donors] ({time.time()-t0:.0f}s)')
 nm = {n['id']: n['name'] for n in nodes}
 print('Strongest shared-donor links:')

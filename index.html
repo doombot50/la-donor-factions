@@ -50,6 +50,34 @@
   #tip .allies { margin-top:6px; padding-top:6px; border-top:1px solid var(--line); font-size:11px; }
   #tip .allies .a { color:var(--text); }
   #tip .allies .j { color:var(--muted); }
+  #tip .allies .a.lk { cursor:pointer; text-decoration:underline dotted #4d6273; text-underline-offset:2px; }
+  #tip .allies .a.lk:hover { color:#9fc6e8; }
+  #tip .clickhint { color:var(--muted); font-size:10px; margin-top:4px; }
+
+  /* Pair panel: the receipts behind one shared-donor link */
+  #pair { position:absolute; top:56px; right:18px; z-index:7; width:330px; max-width:88vw;
+    max-height:calc(100% - 150px); overflow-y:auto; overscroll-behavior:contain;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:12px 14px; font-size:12px; box-shadow:0 8px 24px rgba(0,0,0,0.4); }
+  #pair[hidden] { display:none; }
+  #pair .x { position:absolute; top:6px; right:8px; background:none; border:none; color:var(--muted);
+    font:inherit; font-size:15px; cursor:pointer; padding:2px 6px; line-height:1; }
+  #pair .x:hover { color:var(--text); }
+  #pair .hdr { font-weight:700; font-size:13px; line-height:1.45; padding-right:18px; }
+  #pair .hdr .vs { color:var(--muted); font-weight:400; padding:0 2px; }
+  #pair .meta { color:var(--muted); font-size:11px; margin-top:3px; line-height:1.5; }
+  #pair a { color:#8fbce8; text-decoration:none; }
+  #pair a:hover { text-decoration:underline; }
+  #pair table { width:100%; border-collapse:collapse; margin-top:9px; }
+  #pair th { color:var(--muted); font-weight:600; font-size:10px; text-transform:uppercase;
+    letter-spacing:0.4px; border-bottom:1px solid var(--line); }
+  #pair th, #pair td { text-align:right; padding:3.5px 3px; white-space:nowrap; }
+  #pair th:first-child, #pair td:first-child { text-align:left; white-space:normal; }
+  #pair td:first-child { max-width:150px; overflow-wrap:anywhere; }
+  #pair td { border-bottom:1px solid #1d2831; font-size:11.5px; }
+  #pair tr:last-child td { border-bottom:none; }
+  #pair .amt { font-variant-numeric:tabular-nums; }
+  #pair .note { color:var(--muted); margin-top:9px; font-size:10.5px; line-height:1.5; }
 
   .hint { position:absolute; bottom:14px; right:18px; font-size:11px; color:var(--muted);
     background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:7px 10px; }
@@ -71,6 +99,7 @@
     .legend .note { font-size:10px; }
     .hint { display:none; }
     #tip { max-width:min(260px, 80vw); }
+    #pair { top:52px; right:12px; max-height:52vh; }
   }
 </style>
 </head>
@@ -83,13 +112,15 @@
        Thicker, shorter links = higher overlap (Jaccard), which controls for size so a giant committee
        doesn't look allied with everyone. The layout pulls shared-donor allies together — clusters are
        de-facto money factions. <b>Hover</b> a node, <b>click</b> to isolate its neighborhood,
+       <b>click a link</b> to see the donors two committees actually share,
        or flip the legend to <b>Faction</b> to color by discovered bloc instead of party.</p>
   </header>
   <input id="search" list="names" placeholder="Search committees…" autocomplete="off">
   <datalist id="names"></datalist>
   <div class="legend" id="legend"></div>
-  <div class="hint">scroll / pinch = zoom · drag = pan · tap node = focus · esc = reset</div>
+  <div class="hint">scroll / pinch = zoom · drag = pan · tap node = focus · tap link = shared donors · esc = reset</div>
   <div id="tip"></div>
+  <div id="pair" hidden></div>
   <div id="loading">Loading the network…</div>
 </div>
 
@@ -100,6 +131,16 @@ const PARTY = {
   GRN:{c:'#36a86f',label:'Green'}, OTH:{c:'#7d8b95',label:'Other / committee'},
 };
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d'), tip = document.getElementById('tip');
+const pair = document.getElementById('pair');
+// The campaign-finance portal this story spins off from — pair receipts link
+// each shared donor (and both committees) to their full record there.
+const PORTAL = 'https://finance.charliestephens.xyz/';
+const esc = s => String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Donor profiles over there are built from the loaded rows, so the link must
+// select every cycle — the overlap here is lifetime, and a donor whose gifts
+// all predate the default cycle would otherwise come up empty.
+const donorUrl    = n => PORTAL+'?cycle=all#/donor/'+encodeURIComponent(n);
+const campaignUrl = n => PORTAL+'#/campaign/'+encodeURIComponent(n);
 let W, H, DPR = 1;
 function resize(){
   // Re-read the ratio every time: browser zoom and dragging the window to
@@ -119,6 +160,7 @@ resize();
 
 let nodes=[], edges=[], byId={}, adj={};
 let view={x:0,y:0,k:1}, alpha=1, focus=null, hover=null;
+let edgeSel=null, DONORS=[];   // selected link (pair panel) + its receipt-name table
 let META=null, colorMode='party', factions=[], factionOf={}, factionFocus=null;
 let weightMode='donors';   // 'donors' (count Jaccard) | 'dollars' (weighted Jaccard)
 // Edge weight under the active mode; old factions.json without wjaccard falls back.
@@ -141,7 +183,8 @@ fetch('./factions.json').then(r=>{
   if(!data || !Array.isArray(data.nodes) || !data.nodes.length || !Array.isArray(data.edges))
     throw new Error('factions.json carries no nodes/edges — the build wrote an empty graph');
   document.getElementById('loading').style.display='none';
-  nodes = data.nodes; edges = data.edges;
+  nodes = data.nodes; edges = data.edges; DONORS = data.donors || [];
+  edges.forEach((e,i)=>e.i=i);   // stable handle for ally-row clicks in the tooltip
   byId = Object.fromEntries(nodes.map(n=>[n.id,n]));
   // radius by sqrt(raised); seed positions on a circle; build adjacency
   const maxR = Math.max(...nodes.map(n=>n.raised||1));
@@ -317,7 +360,7 @@ function buildSearch(){
     const q = inp.value.trim().toLowerCase(); if(!q) return;
     const n = nodes.find(x=>x.name.toLowerCase()===q) || nodes.find(x=>x.name.toLowerCase().includes(q));
     if(n){
-      focus=n; hover=n; updateHash();
+      closePair(); focus=n; hover=n; updateHash();
       if(factionFocus!=null){ factionFocus=null; buildLegend(); }  // don't fly to a dimmed node
       flyTo(n); inp.blur();
     }
@@ -336,8 +379,55 @@ function flyTo(n){
   })(t0);
 }
 function updateHash(){
-  history.replaceState(null, '', focus ? '#'+encodeURIComponent(focus.id)
-                                       : location.pathname+location.search);
+  // A selected link wins: `#<a>+<b>` is the shareable "show me the receipts"
+  // permalink; a focused node keeps its old `#<id>` form.
+  history.replaceState(null, '', edgeSel ? '#'+edgeSel.a+'+'+edgeSel.b
+                              : focus    ? '#'+encodeURIComponent(focus.id)
+                                         : location.pathname+location.search);
+}
+
+// ── pair panel: the receipts behind one shared-donor link ───────────────────
+// Clicking a link (or an ally row in a pinned tooltip) opens the top donors
+// the two committees share — the evidence the edge summarizes. Every name is
+// an outbound link to the campaign-finance portal: donors to their full
+// giving record (all cycles), committees to their career profile.
+function shortName(n){ return n.length>16 ? n.slice(0,15)+'…' : n; }
+function fmtExact(v){ return '$'+Math.round(v).toLocaleString('en-US'); }
+function openPair(e){
+  edgeSel = e;
+  const A = byId[e.a], B = byId[e.b];
+  let html = `<button class="x" aria-label="Close">×</button>`+
+    `<div class="hdr"><a href="${campaignUrl(A.name)}" target="_blank" rel="noopener">${esc(A.name)}</a>`+
+    `<span class="vs"> ↔ </span>`+
+    `<a href="${campaignUrl(B.name)}" target="_blank" rel="noopener">${esc(B.name)}</a></div>`+
+    `<div class="meta">${e.shared.toLocaleString()} shared donors · ${fmt(e.sharedDollars)} flows through the `+
+    `overlap · ${(e.jaccard*100).toFixed(0)}% donor overlap</div>`;
+  const top = e.top || [];
+  if(top.length && DONORS.length){
+    html += `<table><thead><tr><th>Shared donor</th><th>→ ${esc(shortName(A.name))}</th>`+
+      `<th>→ ${esc(shortName(B.name))}</th></tr></thead><tbody>`+
+      top.map(([ix,va,vb])=>{
+        const nm = DONORS[ix] ?? '?';
+        return `<tr><td><a href="${donorUrl(nm)}" target="_blank" rel="noopener">${esc(nm)}</a></td>`+
+               `<td class="amt">${fmtExact(va)}</td><td class="amt">${fmtExact(vb)}</td></tr>`;
+      }).join('')+`</tbody></table>`+
+      `<div class="note">Top ${top.length} of ${e.shared.toLocaleString()} shared donors, ranked by dollars given to `+
+      `<i>both</i> sides. Lifetime figures; nickname and spelling variants are merged, and a donor's `+
+      `portal profile opens under its top spelling — so the numbers there can run slightly under these. `+
+      `Names link to the campaign-finance portal.</div>`;
+  } else {
+    html += `<div class="note">This factions.json predates the per-link donor lists — rerun `+
+      `build_factions.py to see who is behind this overlap.</div>`;
+  }
+  pair.innerHTML = html;
+  pair.querySelector('.x').onclick = ()=>{ closePair(); updateHash(); _needsDraw=true; schedule(); };
+  pair.hidden = false;
+  updateHash(); _needsDraw=true; schedule();
+}
+function closePair(){ edgeSel=null; pair.hidden=true; }
+function flyToPair(e){
+  const A = byId[e.a], B = byId[e.b];
+  flyTo({ get x(){ return (A.x+B.x)/2; }, get y(){ return (A.y+B.y)/2; } });
 }
 
 // ── force simulation ───────────────────────────────────────────────────────
@@ -394,7 +484,14 @@ function tick(){
   if(alpha>0.02){ step(); alpha*=0.992; } else alpha=0;
   if(!_fitted && alpha>0 && alpha<0.35){                              // frame the settled layout once
     _fitted=true; fitView();
-    if(pendingHash){ const n=byId[pendingHash]; pendingHash=''; if(n){ focus=n; hover=n; flyTo(n); } }
+    if(pendingHash){
+      const pm = pendingHash.match(/^([^+]+)\+(.+)$/), n = byId[pendingHash];
+      pendingHash='';
+      if(pm){
+        const e = edges.find(e=>(e.a===pm[1]&&e.b===pm[2])||(e.a===pm[2]&&e.b===pm[1]));
+        if(e){ openPair(e); flyToPair(e); }
+      } else if(n){ focus=n; hover=n; flyTo(n); }
+    }
   }
   if(wasLive && alpha===0 && !_settledFit){
     // The layout keeps contracting well after the first fit (the early frames
@@ -412,7 +509,10 @@ function sx(n){ return view.x + n.x*view.k; }
 function sy(n){ return view.y + n.y*view.k; }
 function draw(){
   ctx.clearRect(0,0,W,H);
-  const focusSet = focus ? new Set([focus.id, ...adj[focus.id].map(e=>e.a===focus.id?e.b:e.a)]) : null;
+  // A focused node spotlights its neighborhood; a selected link (pair panel,
+  // no node focus) spotlights just its two endpoints.
+  const focusSet = focus ? new Set([focus.id, ...adj[focus.id].map(e=>e.a===focus.id?e.b:e.a)])
+                 : edgeSel ? new Set([edgeSel.a, edgeSel.b]) : null;
   const inFaction = id => factionFocus==null || factionOf[id].id===factionFocus;
   // With a wider net the mesh of weak links can drown the picture — scale the
   // resting edge opacity down as the edge count grows (≤500 edges: unchanged).
@@ -420,13 +520,24 @@ function draw(){
   // edges
   edges.forEach(e=>{
     const a=byId[e.a], b=byId[e.b]; if(!a||!b) return;
-    const inFocus = (!focusSet || (focusSet.has(e.a)&&focusSet.has(e.b)&&(e.a===focus.id||e.b===focus.id)))
+    const inFocus = (focus ? (focusSet.has(e.a)&&focusSet.has(e.b)&&(e.a===focus.id||e.b===focus.id))
+                   : edgeSel ? e===edgeSel : true)
                     && inFaction(e.a) && inFaction(e.b);
     const w = ew(e);
     ctx.strokeStyle = inFocus ? `rgba(150,180,200,${(0.25+w*1.2)*(focusSet?1:edim)})` : 'rgba(120,140,155,0.05)';
     ctx.lineWidth = inFocus ? (0.5+w*7) : 0.5;
     ctx.beginPath(); ctx.moveTo(sx(a),sy(a)); ctx.lineTo(sx(b),sy(b)); ctx.stroke();
   });
+  // the selected link re-drawn on top in the accent, so it reads as "open"
+  // even inside a bright focused neighborhood
+  if(edgeSel){
+    const a=byId[edgeSel.a], b=byId[edgeSel.b];
+    if(a&&b){
+      ctx.strokeStyle = 'rgba(224,178,63,0.9)';
+      ctx.lineWidth = 1.5+ew(edgeSel)*7;
+      ctx.beginPath(); ctx.moveTo(sx(a),sy(a)); ctx.lineTo(sx(b),sy(b)); ctx.stroke();
+    }
+  }
   // nodes
   nodes.forEach(n=>{
     const dim = (focusSet && !focusSet.has(n.id)) || !inFaction(n.id);
@@ -441,6 +552,7 @@ function draw(){
   ctx.textAlign='center'; ctx.textBaseline='bottom';
   const labelSet = new Set(nodes.slice(0,10).map(n=>n.id));
   if(focus){ labelSet.add(focus.id); adj[focus.id].forEach(e=>labelSet.add(e.a===focus.id?e.b:e.a)); }
+  if(edgeSel){ labelSet.add(edgeSel.a); labelSet.add(edgeSel.b); }
   if(hover) labelSet.add(hover.id);
   nodes.forEach(n=>{
     if(!labelSet.has(n.id)) return;
@@ -455,6 +567,28 @@ function nodeAt(px,py){
   let best=null, bestD=Infinity;
   for(const n of nodes){ const dx=px-sx(n), dy=py-sy(n); const d=dx*dx+dy*dy;
     const rr=(n.r*Math.sqrt(view.k)+4)**2; if(d<rr && d<bestD){ best=n; bestD=d; } }
+  return best;
+}
+function _distSeg(px,py,x1,y1,x2,y2){
+  const dx=x2-x1, dy=y2-y1, l2=dx*dx+dy*dy;
+  let t = l2 ? ((px-x1)*dx+(py-y1)*dy)/l2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px-(x1+t*dx), py-(y1+t*dy));
+}
+// Nearest link under the cursor — only among links currently drawn bright
+// (clicking a dimmed, near-invisible line would open a panel out of nowhere).
+function edgeAt(px,py,tol){
+  const inFaction = id => factionFocus==null || factionOf[id].id===factionFocus;
+  let best=null, bestD=Infinity;
+  for(const e of edges){
+    const a=byId[e.a], b=byId[e.b]; if(!a||!b) continue;
+    if(focus && !(e.a===focus.id||e.b===focus.id)) continue;
+    if(!inFaction(e.a) || !inFaction(e.b)) continue;
+    // Measure to the stroke's EDGE, not its centerline: where two links cross,
+    // the thick one is what the eye sees, so it should win the click.
+    const d = _distSeg(px,py, sx(a),sy(a), sx(b),sy(b)) - (0.25+ew(e)*3.5);
+    if(d<tol && d<bestD){ best=e; bestD=d; }
+  }
   return best;
 }
 // `last` is the previous move position (it drives the pan delta, so it tracks
@@ -473,17 +607,34 @@ window.addEventListener('mousemove', ev=>{
   if(panning){ _userView=true; view.x+=ev.clientX-last.x; view.y+=ev.clientY-last.y; last={x:ev.clientX,y:ev.clientY}; _needsDraw=true; schedule(); return; }
   const n = nodeAt(ev.clientX, ev.clientY);
   if(n!==hover){ hover=n; _needsDraw=true; schedule(); }
-  if(n) showTip(n, ev.clientX, ev.clientY); else tip.style.display='none';
+  if(n) showTip(n, ev.clientX, ev.clientY);
+  else if(focus){
+    // Keep a focused node's tip pinned (anchored at the node) instead of hiding
+    // it the moment the cursor leaves the dot — otherwise its ally rows could
+    // never be reached to click. Moves over the tip itself leave it alone.
+    if(!tip.contains(ev.target)) showTip(focus, sx(focus), sy(focus));
+  }
+  else tip.style.display='none';
 });
 window.addEventListener('mouseup', ()=>{ dragNode=null; panning=false; cv.classList.remove('grabbing'); });
 cv.addEventListener('click', ev=>{
   if(Math.abs(ev.clientX-downAt.x)>4||Math.abs(ev.clientY-downAt.y)>4) return;
   const n = nodeAt(ev.clientX, ev.clientY);
-  focus = (n===focus) ? null : n; updateHash(); _needsDraw=true; schedule();
+  if(n){
+    closePair(); focus = (n===focus) ? null : n;
+    // re-render the tip in its pinned state so the ally rows take clicks
+    if(focus) showTip(focus, ev.clientX, ev.clientY);
+  }
+  else {
+    const e = edgeAt(ev.clientX, ev.clientY, 6);
+    if(e){ focus=null; openPair(e); return; }   // openPair updates hash + redraws
+    closePair(); focus=null;
+  }
+  updateHash(); _needsDraw=true; schedule();
 });
 window.addEventListener('keydown', ev=>{
   if(ev.key==='Escape'){
-    focus=null; hover=null; factionFocus=null; tip.style.display='none';
+    focus=null; hover=null; factionFocus=null; closePair(); tip.style.display='none';
     updateHash(); buildLegend(); _needsDraw=true; schedule();
   }
 });
@@ -541,7 +692,10 @@ cv.addEventListener('touchend', ev=>{
   if(ev.touches.length===0){
     if(!touchMoved){               // a clean tap (even if it grabbed a node) toggles focus
       const n = nodeAt(tapStart.x, tapStart.y);
-      focus = (n===focus) ? null : n; updateHash();
+      const e = n ? null : edgeAt(tapStart.x, tapStart.y, 10);   // fingers are wider than cursors
+      if(n) closePair(); else if(e){ focus=null; openPair(e); }
+      else closePair();
+      if(!e){ focus = (n===focus) ? null : n; updateHash(); }
       hover = n;                   // no hover on touch, so a tap surfaces the tooltip
       if(n) showTip(n, tapStart.x, tapStart.y); else tip.style.display='none';
     }
@@ -556,19 +710,29 @@ cv.addEventListener('touchend', ev=>{
 
 function fmt(v){ return v>=1e6 ? '$'+(v/1e6).toFixed(1)+'M' : v>=1e3 ? '$'+(v/1e3).toFixed(0)+'K' : '$'+v; }
 function showTip(n, px, py){
-  const allies = adj[n.id].map(e=>({ o:byId[e.a===n.id?e.b:e.a], shared:e.shared, sd:e.sharedDollars, j:ew(e) }))
+  const allies = adj[n.id].map(e=>({ e, o:byId[e.a===n.id?e.b:e.a], shared:e.shared, sd:e.sharedDollars, j:ew(e) }))
     .sort((a,b)=>b.j-a.j).slice(0,4);
   const f = factionOf[n.id];
+  // A pinned tip (the node is focused) takes clicks: each ally row opens the
+  // pair panel for that link. A hover tip stays click-through so the canvas
+  // underneath keeps its hover behavior.
+  const pinned = focus===n;
   tip.innerHTML = `<div class="nm">${n.name}</div>`+
     `<div class="meta">${(PARTY[n.party]||PARTY.OTH).label}${n.office?' · '+n.office:''} · raised ${fmt(n.raised)} from ${n.nDonors.toLocaleString()} donors`+
     (f && f.members.length>1 ? `<br>${f.name} (${f.members.length} committees)` : '')+`</div>`+
     (allies.length ? `<div class="allies">Shares donors with:<br>`+
-      allies.map(a=>`<span class="a">${a.o.name.slice(0,30)}</span> <span class="j">— ${a.shared}${a.sd!=null?' · '+fmt(a.sd):''} (${(a.j*100).toFixed(0)}%)</span>`).join('<br>')+`</div>` : '');
+      allies.map(a=>`<span class="a${pinned?' lk':''}" data-e="${a.e.i}">${esc(a.o.name.slice(0,30))}</span> <span class="j">— ${a.shared}${a.sd!=null?' · '+fmt(a.sd):''} (${(a.j*100).toFixed(0)}%)</span>`).join('<br>')+
+      (pinned ? `<div class="clickhint">click an ally to see the donors they share</div>` : '')+`</div>` : '');
+  tip.style.pointerEvents = pinned ? 'auto' : 'none';
   tip.style.display='block';
   const tw = tip.offsetWidth, th = tip.offsetHeight;
   tip.style.left = Math.min(px+14, W-tw-10)+'px';
   tip.style.top  = Math.min(py+14, H-th-10)+'px';
 }
+tip.addEventListener('click', ev=>{
+  const el = ev.target.closest('[data-e]');
+  if(el && edges[+el.dataset.e]) openPair(edges[+el.dataset.e]);
+});
 </script>
 </body>
 </html>
