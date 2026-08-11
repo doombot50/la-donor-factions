@@ -14,9 +14,11 @@ permissions:
   pages: write
   id-token: write
 
+# Never cancel an in-flight deploy; queue the next one. Cancelling mid-request
+# leaves the Pages deployment half-applied and the run reported as failed.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -26,6 +28,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # The page is nothing but index.html + factions.json, and a bad graph fails
+      # SILENTLY — the browser fetches it, gets nothing usable, and there is no
+      # server to notice. Refuse to publish one that isn't there.
+      - name: Sanity-check factions.json
+        run: |
+          python3 - <<'EOF'
+          import json, sys
+          d = json.load(open('factions.json'))          # invalid JSON fails here
+          nodes, edges = d.get('nodes') or [], d.get('edges') or []
+          ids = {n.get('id') for n in nodes}
+          problems = []
+          if len(nodes) < 50:
+              problems.append(f'only {len(nodes)} nodes (expected >= 50)')
+          if len(edges) < 50:
+              problems.append(f'only {len(edges)} edges (expected >= 50)')
+          if not d.get('params'):
+              problems.append('no params block (the legend reads it)')
+          dangling = [e for e in edges if e.get('a') not in ids or e.get('b') not in ids]
+          if dangling:
+              problems.append(f'{len(dangling)} edge(s) point at unknown nodes')
+          if problems:
+              sys.exit('refusing to deploy: ' + '; '.join(problems))
+          print(f'ok: {len(nodes)} nodes, {len(edges)} edges, built {d.get("generated")}')
+          EOF
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
