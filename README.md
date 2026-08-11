@@ -60,6 +60,19 @@ its neighborhood; scroll to zoom, drag to pan. The search box (top right) flies 
 a committee by name, and focusing a node puts its filer id in the URL hash, so a
 link like `…/#1144` opens with that committee focused — shareable permalinks.
 
+**Click a link** (or an ally row in a focused node's tooltip) to open the
+receipts behind it: the top shared donors, ranked by dollars given to *both*
+sides, with each side's total. Every name links back to the campaign-finance
+portal — donors to their full all-cycle giving record
+(`finance.charliestephens.xyz/?cycle=all#/donor/…`), committees to their career
+profile (`#/campaign/…`) — so an edge is verifiable, not just asserted.
+`build_factions.py` emits the lists (`--edge-donors`, default 12) ranked by
+`min($ to A, $ to B)`, the same quantity the edge's dollar overlap sums, and
+links each donor cluster under its top-dollar as-in-rows spelling (the portal
+matches contributor strings exactly, so a merged cluster's portal profile can
+run slightly under the figures shown here). A selected link is a permalink too:
+`…/#1551+2667`.
+
 The legend toggles between two colorings: **Party** (registered party of the filer)
 and **Faction** — blocs *discovered* from the money itself via Jaccard-weighted
 label propagation over the shared-donor graph. A bloc is named for its story when
