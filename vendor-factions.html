@@ -21,6 +21,9 @@
   h1 { margin:0; font-size:18px; font-weight:700; letter-spacing:-0.2px; }
   .sub { margin:3px 0 0; font-size:12.5px; color:var(--muted); max-width:700px; line-height:1.5; }
   .sub b { color:var(--text); font-weight:600; }
+  .also { margin:7px 0 0; font-size:12px; pointer-events:auto; }
+  .also a { color:#8fbce8; text-decoration:none; }
+  .also a:hover { text-decoration:underline; }
 
   #search { position:absolute; top:14px; right:18px; z-index:6; width:220px; max-width:46vw;
     background:var(--panel); border:1px solid var(--line); border-radius:8px;
@@ -107,6 +110,7 @@
        means a shared <b>operative</b>, not a shared errand. Thicker, shorter links = higher overlap, weighted so a
        rare consultant outweighs a common one. <b>Hover</b> a node for a quick read;
        <b>click</b> a committee to isolate it and open its full shared-vendor sheet — every operative it shares, with whom.</p>
+    <p class="also"><a href="index.html">Sibling map → <b>Donor Factions</b>: which committees draw from the same donors</a></p>
   </header>
   <input id="search" list="names" placeholder="Search committees…" autocomplete="off">
   <datalist id="names"></datalist>
