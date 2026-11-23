@@ -170,8 +170,8 @@ footer{margin-top:64px; border-top:1px solid var(--hair); padding-top:18px; font
   <h2>Who works for whom</h2>
   <p class="intro" id="firmsIntro">Every consulting, polling, printing and media-buying firm with at least three committee clients, ranked by what those clients paid it. Pick a cycle to see who is hiring this time; filter by the clients' party to see each side's bench. <b>Click a firm</b> for its client list.</p>
   <div class="controls">
-    <label class="ctl"><span>Cycle</span><div class="seg" id="cycleSeg" role="group" aria-label="Cycle"></div></label>
-    <label class="ctl"><span>Clients</span><div class="seg" id="partySeg" role="group" aria-label="Client party"></div></label>
+    <div class="ctl"><span>Cycle</span><div class="seg" id="cycleSeg" role="group" aria-label="Cycle"></div></div>
+    <div class="ctl"><span>Clients</span><div class="seg" id="partySeg" role="group" aria-label="Client party"></div></div>
     <label class="ctl grow"><span>Find a firm or client</span><input type="search" id="firmSearch" placeholder="e.g. Baselice, Gumbo PAC, Mele…" autocomplete="off"></label>
   </div>
   <div class="legend"><span><i style="background:var(--rep)"></i>Republican clients</span><span><i style="background:var(--dem)"></i>Democratic</span><span><i style="background:var(--oth)"></i>PACs and other filers</span></div>
@@ -236,9 +236,16 @@ function partyTag(p){ const k = (p==='DEM'||p==='REP') ? p : 'OTH'; return `<spa
 /* ═════════════════════════ firms ═════════════════════════ */
 let FIRMS=null, COMS=[], CYCLES=[], cycleSel='all', partySel='all', query='', shown=40, openFirm=null;
 function bucket(p){ return p==='REP' ? 'REP' : p==='DEM' ? 'DEM' : 'OTH'; }
+// Buttons are built once and a click only moves aria-pressed. Rebuilding
+// the group inside the click (as this did) detached the clicked button
+// mid-event, and Safari then handed the click to the group's first button,
+// snapping every choice back to "All".
 function setSeg(el, opts, cur, onPick){
   el.innerHTML = opts.map(([v,l])=>`<button type="button" data-v="${v}" aria-pressed="${String(v)===String(cur)}">${l}</button>`).join('');
-  el.querySelectorAll('button').forEach(b=>b.onclick=()=>onPick(b.dataset.v));
+  el.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    el.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed', String(x===b)));
+    onPick(b.dataset.v);
+  });
 }
 function readHash(){
   const h = new URLSearchParams(location.hash.slice(1));
@@ -254,7 +261,9 @@ function writeHash(){
   if(query) h.set('q', query);
   if(openFirm) h.set('firm', openFirm);
   const s = h.toString();
-  history.replaceState(null,'', s ? '#'+s : location.pathname+location.search);
+  // Sandboxed hosts (an embedded artifact) refuse URL changes; the page
+  // must still redraw, so a refusal is ignored.
+  try{ history.replaceState(null,'', s ? '#'+s : location.pathname+location.search); }catch(e){}
 }
 function firmView(f){
   // dollars in the current cycle / party filter, and the client roll-up
@@ -314,8 +323,8 @@ function bootFirms(data){
   FIRMS=data; COMS=data.committees; CYCLES=data.cycles;
   readHash();
   const cyOpts=[['all','All years'], ...[...CYCLES].reverse().map(c=>[String(c), c===2027?'2027 so far':String(c)])];
-  const drawCy=()=>setSeg($('cycleSeg'), cyOpts, cycleSel, v=>{ cycleSel=v; shown=40; writeHash(); drawCy(); renderFirms(); });
-  const drawPa=()=>setSeg($('partySeg'), [['all','All'],['REP','Republican'],['DEM','Democratic'],['OTH','PACs & other']], partySel, v=>{ partySel=v; shown=40; writeHash(); drawPa(); renderFirms(); });
+  const drawCy=()=>setSeg($('cycleSeg'), cyOpts, cycleSel, v=>{ cycleSel=v; shown=40; renderFirms(); writeHash(); });
+  const drawPa=()=>setSeg($('partySeg'), [['all','All'],['REP','Republican'],['DEM','Democratic'],['OTH','PACs & other']], partySel, v=>{ partySel=v; shown=40; renderFirms(); writeHash(); });
   drawCy(); drawPa();
   const inp=$('firmSearch'); inp.value=query;
   let t=null; inp.addEventListener('input', ()=>{ clearTimeout(t); t=setTimeout(()=>{ query=inp.value.trim(); shown=40; writeHash(); renderFirms(); }, 150); });
@@ -611,7 +620,7 @@ function showPanel(n){
 }
 
 /* ═════════════════════════ load ═════════════════════════ */
-const getJSON = (inline, url) => inline ? Promise.resolve(inline) : fetch(url).then(r=>{ if(!r.ok) throw new Error(url); return r.json(); });
+const getJSON = (inline, url) => inline ? Promise.resolve(inline) : fetch(url, {cache:'no-cache'}).then(r=>{ if(!r.ok) throw new Error(url); return r.json(); });
 Promise.all([getJSON(window.__GRAPH_DATA__, './vendor_factions.json'), getJSON(window.__FIRM_DATA__, './vendor_firms.json')])
   .then(([g,f])=>{ bootStats(g,f); bootFirms(f); bootGraph(g); })
   .catch(()=>{ $('loading').textContent='Could not load the vendor data.'; });
