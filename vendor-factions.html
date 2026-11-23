@@ -254,7 +254,9 @@ function writeHash(){
   if(query) h.set('q', query);
   if(openFirm) h.set('firm', openFirm);
   const s = h.toString();
-  history.replaceState(null,'', s ? '#'+s : location.pathname+location.search);
+  // Sandboxed hosts (an embedded artifact) refuse URL changes; the page
+  // must still redraw, so a refusal is ignored.
+  try{ history.replaceState(null,'', s ? '#'+s : location.pathname+location.search); }catch(e){}
 }
 function firmView(f){
   // dollars in the current cycle / party filter, and the client roll-up

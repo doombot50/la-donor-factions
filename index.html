@@ -385,9 +385,9 @@ function flyTo(n){
 function updateHash(){
   // A selected link wins: `#<a>+<b>` is the shareable "show me the receipts"
   // permalink; a focused node keeps its old `#<id>` form.
-  history.replaceState(null, '', edgeSel ? '#'+edgeSel.a+'+'+edgeSel.b
+  try{ history.replaceState(null, '', edgeSel ? '#'+edgeSel.a+'+'+edgeSel.b
                               : focus    ? '#'+encodeURIComponent(focus.id)
-                                         : location.pathname+location.search);
+                                         : location.pathname+location.search); }catch(e){}
 }
 
 // ── pair panel: the receipts behind one shared-donor link ───────────────────
