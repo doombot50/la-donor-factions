@@ -6,6 +6,35 @@ draw from the same **donors***; this asks *which committees pay the same
 that quietly operate a bloc. It maps the **operative layer** the donor tool
 can't see.
 
+## November 2026: payee types and the firm view
+
+The graph used to drop only vendors paid by 100+ committees, so restaurants,
+the IRS, the Board of Ethics, banks and every TV station (under several
+spellings) made links. `vendor_types.py` now gives every payee a type, from its
+name and then from what committees said they paid it for, summed by dollars:
+
+| type | covers | on the page |
+|---|---|---|
+| operative | consultants, pollsters, mail/print, media buyers, fundraisers, compliance, lawyers | named; makes links |
+| field | a private individual paid for canvassing, election-day or other labour | counts toward links, never named (`edge.field`) |
+| media | TV/radio stations, cable ad sellers, newspapers, billboards | per-committee total (`node.media`, `node.nMedia`) |
+| commodity | restaurants, hotels, travel, retail, software, banks | dropped |
+| civic | government, fees, schools, churches, clubs, charities, party dues; former candidates paid as people | dropped |
+
+Station money belongs to Louisiana Airwaves and Louisiana Dial. Party labels use
+the shared `party_corrections.json` from the data-cache release. The build also
+writes `vendor_firms.json` (every operative with 3+ clients and $25K+, what each
+client paid it per four-year cycle), which drives the page's "Who works for
+whom" table, filterable by cycle and client party (`#cy=2023&pa=DEM&firm=…`).
+`tests/test_vendor_types.py` pins the cases that used to go wrong.
+
+```bash
+python3 build_vendor_factions.py --cache ../Lousiana-DMAs/.la_cache
+python3 -m unittest discover -s tests
+```
+
+The rest of this note describes the original spike.
+
 Status: **proof-of-concept**. `build_vendor_factions.py` produces the graph
 (`vendor_factions.json`) and prints diagnostics; `vendor-factions.html` renders
 it as an interactive force-directed network (a sibling of donor-factions'

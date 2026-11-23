@@ -3,187 +3,399 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Louisiana's Vendor Factions — who hires the same operatives</title>
+<title>Louisiana's Vendor Factions</title>
+<meta name="description" content="Which Louisiana political committees hire the same consultants, pollsters, printers and media buyers, and which firms work for whom, cycle by cycle since 2000.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;900&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
-  :root {
-    --bg:#0e1418; --panel:#162028; --line:#26333d; --text:#e6edf3; --muted:#8aa0ad;
-    --dem:#3b76e0; --rep:#e0524d; --ind:#9b6bf0; --lbt:#d9a441; --grn:#36a86f; --oth:#7d8b95;
+/* Same tokens as Louisiana Airwaves and Louisiana Dial, so the three read as one site. */
+:root{
+  color-scheme:light;
+  --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --hair:#e1e0d9; --baseline:#c3c2b7; --accent-ink:#1c5cab; --accent:#2a78d6;
+  --dem:#2a78d6; --rep:#e34948; --oth:#a3a199; --ind:#4a3aa7;
+  --edge:120,118,110; --label:#3b3a37; --halo:#f9f9f7;
+  --b1:#1baf7a; --b2:#eda100; --b3:#e87ba4; --b4:#eb6834; --b5:#4a3aa7; --b6:#008300; --b7:#1c5cab; --b8:#b8434f; --bsmall:#c3c2b7;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+    --hair:#2c2c2a; --baseline:#383835; --accent-ink:#6da7ec; --accent:#3987e5;
+    --dem:#3987e5; --rep:#e66767; --oth:#6b6a64; --ind:#9085e9;
+    --edge:190,188,180; --label:#e4e3dc; --halo:#0d0d0d;
+    --b1:#199e70; --b2:#c98500; --b3:#d55181; --b4:#d95926; --b5:#9085e9; --b6:#2f9e2f; --b7:#6da7ec; --b8:#e66767; --bsmall:#4a4a46;
   }
-  * { box-sizing:border-box; }
-  html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; overflow:hidden; }
-  #wrap { position:fixed; inset:0; }
-  canvas { display:block; cursor:grab; touch-action:none; }
-  canvas.grabbing { cursor:grabbing; }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+  --hair:#2c2c2a; --baseline:#383835; --accent-ink:#6da7ec; --accent:#3987e5;
+  --dem:#3987e5; --rep:#e66767; --oth:#6b6a64; --ind:#9085e9;
+  --edge:190,188,180; --label:#e4e3dc; --halo:#0d0d0d;
+  --b1:#199e70; --b2:#c98500; --b3:#d55181; --b4:#d95926; --b5:#9085e9; --b6:#2f9e2f; --b7:#6da7ec; --b8:#e66767; --bsmall:#4a4a46;
+}
+*{box-sizing:border-box}
+body{background:var(--page); color:var(--ink); font:16px/1.55 "Source Serif 4",Georgia,serif; margin:0;}
+.wrap{max-width:1080px; margin:0 auto; padding:0 16px 72px;}
+a{color:var(--accent-ink); text-decoration-thickness:1px; text-underline-offset:2px;}
+h1,h2,h3{font-family:Archivo,"Segoe UI",system-ui,sans-serif; text-wrap:balance; margin:0;}
+.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;}
+.sans{font-family:Archivo,system-ui,sans-serif;}
+.eyebrow{font-family:Archivo,system-ui,sans-serif; font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--ink2);}
+.eyebrow a{color:inherit; text-decoration:none; border-bottom:1px solid var(--baseline);}
+header.top{padding:44px 0 0;}
+header.top h1{font-weight:900; font-size:clamp(36px,6vw,56px); letter-spacing:-.015em; line-height:1.02; margin:10px 0 0;}
+.dek{max-width:64ch; font-size:17.5px; color:var(--ink2); margin:16px 0 0;}
+.dek b{color:var(--ink); font-weight:600;}
+.stats{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--hair); border:1px solid var(--hair); margin:30px 0 0;}
+.stat{background:var(--surface); padding:14px 16px 12px;}
+.stat .v{font-family:Archivo,system-ui,sans-serif; font-weight:900; font-size:28px; line-height:1.1; letter-spacing:-.01em;}
+.stat .l{font-size:12.5px; color:var(--ink2); font-family:Archivo,system-ui,sans-serif; margin-top:3px; line-height:1.35;}
+@media(max-width:720px){.stats{grid-template-columns:repeat(2,1fr);}}
+section{margin-top:60px;}
+.seclabel{font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); font-family:Archivo,system-ui,sans-serif;}
+section h2{font-size:clamp(23px,3.4vw,31px); font-weight:700; letter-spacing:-.01em; margin:6px 0 0;}
+.intro{max-width:64ch; color:var(--ink2); margin:12px 0 0; font-size:16.5px;}
+.intro b{color:var(--ink); font-weight:600;}
+.cap{font-size:12.5px; color:var(--muted); font-family:Archivo,system-ui,sans-serif; margin-top:12px; max-width:76ch;}
 
-  header { position:absolute; top:0; left:0; right:0; padding:14px 18px;
-    background:linear-gradient(180deg, rgba(14,20,24,0.95), rgba(14,20,24,0)); pointer-events:none; }
-  h1 { margin:0; font-size:18px; font-weight:700; letter-spacing:-0.2px; }
-  .sub { margin:3px 0 0; font-size:12.5px; color:var(--muted); max-width:700px; line-height:1.5; }
-  .sub b { color:var(--text); font-weight:600; }
-  .also { margin:7px 0 0; font-size:12px; pointer-events:auto; }
-  .also a { color:#8fbce8; text-decoration:none; }
-  .also a:hover { text-decoration:underline; }
+/* ── controls ───────────────────────────────────────────── */
+.controls{display:flex; flex-wrap:wrap; gap:14px 22px; align-items:flex-end; margin-top:24px;}
+.ctl{display:flex; flex-direction:column; gap:5px;}
+.ctl > span{font-family:Archivo,system-ui,sans-serif; font-size:10.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--muted);}
+.seg{display:flex; flex-wrap:wrap; border:1px solid var(--baseline); border-radius:3px; overflow:hidden;}
+.seg button{font:500 12px "IBM Plex Mono",monospace; padding:6px 10px; background:var(--surface); color:var(--ink2); border:none; border-right:1px solid var(--hair); cursor:pointer;}
+.seg button:last-child{border-right:none;}
+.seg button[aria-pressed="true"]{background:var(--ink); color:var(--page);}
+.seg button:focus-visible, .frow:focus-visible, input:focus-visible, .iconbtn:focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
+input[type=search]{font:14px Archivo,system-ui,sans-serif; padding:7px 10px; border:1px solid var(--baseline); border-radius:3px; background:var(--surface); color:var(--ink); width:240px; max-width:100%;}
+.ctl.grow{flex:1 1 220px;}
+.ctl.grow input{width:100%;}
 
-  #search { position:absolute; top:14px; right:18px; z-index:6; width:220px; max-width:46vw;
-    background:var(--panel); border:1px solid var(--line); border-radius:8px;
-    color:var(--text); padding:7px 10px; font-size:12.5px; outline:none; }
-  #search::placeholder { color:var(--muted); }
-  #search:focus { border-color:#3d5464; }
+/* ── firm table ─────────────────────────────────────────── */
+.ftable{margin-top:18px; border:1px solid var(--hair); background:var(--surface);}
+.fhead,.frow{display:grid; grid-template-columns:2.2em minmax(0,1.6fr) 6.2em 4.6em minmax(90px,1fr); gap:12px; align-items:center; padding:9px 16px;}
+.fhead{font-family:Archivo,system-ui,sans-serif; font-size:10.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--ink2); border-bottom:1px solid var(--hair);}
+.fhead .r, .frow .r{text-align:right;}
+.frow{border-top:1px solid var(--hair); cursor:pointer;}
+.frow:first-of-type{border-top:none;}
+.frow:hover{background:var(--page);}
+.frow .rk{font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--muted);}
+.frow .nm{font-family:Archivo,system-ui,sans-serif; font-weight:600; font-size:14px; min-width:0;}
+.frow .nm small{display:block; font-weight:400; font-size:11.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.frow .amt{font-family:"IBM Plex Mono",monospace; font-size:12.5px; font-weight:600; font-variant-numeric:tabular-nums;}
+.frow .n{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--ink2); font-variant-numeric:tabular-nums;}
+.mixbar{display:flex; height:10px; border-radius:2px; overflow:hidden; gap:1px; background:var(--hair);}
+.mixbar span{display:block; height:100%;}
+.fdetail{border-top:1px solid var(--hair); padding:12px 16px 16px 16px; background:var(--page);}
+.fdetail table{border-collapse:collapse; width:100%; font-size:13px;}
+.fdetail th{font-family:Archivo,system-ui,sans-serif; font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--ink2); text-align:right; padding:4px 8px; border-bottom:1px solid var(--hair); white-space:nowrap;}
+.fdetail th:first-child{text-align:left;}
+.fdetail td{padding:5px 8px; border-bottom:1px solid var(--hair); text-align:right; font-family:"IBM Plex Mono",monospace; font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap;}
+.fdetail td:first-child{text-align:left; font-family:Archivo,system-ui,sans-serif; font-size:13px; white-space:normal;}
+.fdetail td.z{color:var(--hair);}
+.fdetail .scroll{overflow-x:auto;}
+.ptag{font-family:"IBM Plex Mono",monospace; font-size:9.5px; font-weight:600; padding:0 4px; border-radius:2px; border:1px solid; margin-left:6px; vertical-align:1px;}
+.ptag.DEM{color:var(--dem); border-color:var(--dem);} .ptag.REP{color:var(--rep); border-color:var(--rep);} .ptag.OTH{color:var(--muted); border-color:var(--hair);}
+.more{display:block; margin:14px auto 0; font:600 12.5px Archivo,system-ui,sans-serif; padding:8px 16px; border:1px solid var(--baseline); background:var(--surface); color:var(--ink); border-radius:3px; cursor:pointer;}
+.legend{display:flex; gap:14px; flex-wrap:wrap; font-family:Archivo,system-ui,sans-serif; font-size:11.5px; color:var(--ink2); margin-top:12px;}
+.legend span{display:flex; align-items:center; gap:5px;}
+.legend i{width:10px; height:10px; border-radius:2px; flex:none;}
+.empty{padding:22px 16px; color:var(--muted); font-family:Archivo,system-ui,sans-serif; font-size:14px;}
+@media(max-width:640px){
+  .fhead,.frow{grid-template-columns:minmax(0,1fr) 5.6em 3.4em; padding:9px 12px;}
+  .fhead .rk,.frow .rk,.fhead .mix,.frow .mixcell{display:none;}
+}
 
-  .legend { position:absolute; bottom:14px; left:18px; background:var(--panel);
-    border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-size:12px; }
-  .legend .modes { display:flex; gap:4px; margin-bottom:7px; }
-  .legend .modes button { flex:1; background:none; border:1px solid var(--line); border-radius:6px;
-    color:var(--muted); font:inherit; font-size:11px; padding:3px 8px; cursor:pointer; }
-  .legend .modes button.on { background:#22303a; color:var(--text); border-color:#3d5464; }
-  .legend .row { display:flex; align-items:center; gap:7px; margin:3px 0; }
-  .legend .row.f { cursor:pointer; border-radius:5px; padding:1px 3px; margin:1px -3px; }
-  .legend .row.f:hover { background:#1d2933; }
-  .legend .row.f.sel { background:#22303a; }
-  .dot { width:11px; height:11px; border-radius:50%; flex:0 0 auto; }
-  .legend .note { color:var(--muted); margin-top:8px; max-width:240px; line-height:1.45; font-size:11px; }
-  .legend .stat { color:var(--muted); margin-top:6px; font-size:11px; }
+/* ── network ────────────────────────────────────────────── */
+.net{position:relative; margin-top:22px; border:1px solid var(--hair); background:var(--surface); height:min(76vh,700px); min-height:440px; overflow:hidden;}
+.net canvas{display:block; cursor:grab; touch-action:none;}
+.net canvas.grabbing{cursor:grabbing;}
+.nettools{position:absolute; top:10px; left:10px; right:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start; pointer-events:none;}
+.nettools > *{pointer-events:auto;}
+.nettools input{width:210px;}
+.iconbtn{font:600 15px "IBM Plex Mono",monospace; width:30px; height:30px; border:1px solid var(--baseline); background:var(--surface); color:var(--ink); border-radius:3px; cursor:pointer;}
+.netlegend{position:absolute; left:10px; bottom:10px; background:var(--surface); border:1px solid var(--hair); padding:9px 11px; font-family:Archivo,system-ui,sans-serif; font-size:11.5px; color:var(--ink2); max-width:260px; max-height:46%; overflow-y:auto;}
+.netlegend .row{display:flex; align-items:center; gap:7px; margin:2px 0;}
+.netlegend .row.f{cursor:pointer; padding:1px 3px; margin:1px -3px; border-radius:2px;}
+.netlegend .row.f:hover, .netlegend .row.f.sel{background:var(--page);}
+.dot{width:10px; height:10px; border-radius:50%; flex:none;}
+.nethint{position:absolute; right:10px; bottom:10px; font-family:Archivo,system-ui,sans-serif; font-size:11px; color:var(--muted); background:var(--surface); border:1px solid var(--hair); padding:5px 8px;}
+#tip{position:absolute; pointer-events:none; background:var(--ink); color:var(--page); font-family:Archivo,system-ui,sans-serif; font-size:12px; line-height:1.45; padding:8px 10px; border-radius:3px; max-width:290px; display:none; z-index:5;}
+#tip .nm{font-weight:700;}
+#tip .meta{opacity:.75; font-size:11px;}
+#tip .allies{margin-top:6px; padding-top:6px; border-top:1px solid rgba(127,127,127,.4); font-size:11px;}
+#tip .v{opacity:.75; font-style:italic;}
+#panel{position:absolute; top:52px; right:10px; width:330px; max-width:calc(100% - 20px); max-height:calc(100% - 64px); overflow-y:auto; overscroll-behavior:contain; background:var(--surface); border:1px solid var(--baseline); padding:12px 14px; font-family:Archivo,system-ui,sans-serif; font-size:12.5px; z-index:6; display:none;}
+#panel .phead{display:flex; justify-content:space-between; gap:8px; align-items:flex-start;}
+#panel .pnm{font-weight:700; font-size:15px; line-height:1.25;}
+#panel #pclose{background:none; border:none; color:var(--muted); font-size:19px; line-height:1; cursor:pointer;}
+#panel .pmeta{color:var(--ink2); font-size:11.5px; margin:3px 0 6px; line-height:1.45;}
+#panel .pally{border-top:1px solid var(--hair); padding:9px 0 3px;}
+#panel .pallyhd{display:flex; justify-content:space-between; gap:8px; align-items:baseline; cursor:pointer;}
+#panel .pallyhd .an{font-weight:600;}
+#panel .pallyhd:hover .an{text-decoration:underline;}
+#panel .pallyhd .ac{color:var(--muted); font-size:11px; white-space:nowrap; font-family:"IBM Plex Mono",monospace;}
+#panel .pvend{margin:6px 0 2px; display:flex; flex-wrap:wrap; gap:4px;}
+#panel .chip{background:var(--page); border:1px solid var(--hair); border-radius:2px; padding:2px 6px; font-size:11px;}
+#panel .chip b{color:var(--muted); font-weight:400;}
+#panel .chip.anon{font-style:italic; color:var(--ink2);}
+#panel .pmore{color:var(--muted); font-size:11px; align-self:center;}
+#loading{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); font-family:Archivo,system-ui,sans-serif;}
+@media(max-width:640px){ .nethint{display:none;} .netlegend{max-width:62%; font-size:11px;} #panel{top:auto; bottom:10px; max-height:55%;} }
 
-  #tip { position:absolute; pointer-events:none; background:var(--panel); border:1px solid var(--line);
-    border-radius:8px; padding:9px 11px; font-size:12px; max-width:290px; display:none; z-index:5;
-    box-shadow:0 8px 24px rgba(0,0,0,0.4); }
-  #tip .nm { font-weight:700; margin-bottom:2px; }
-  #tip .meta { color:var(--muted); font-size:11px; }
-  #tip .allies { margin-top:6px; padding-top:6px; border-top:1px solid var(--line); font-size:11px; }
-  #tip .allies .a { color:var(--text); }
-  #tip .allies .j { color:var(--muted); }
-  #tip .allies .v { color:var(--muted); font-style:italic; }
-  #tip .tiphint { margin-top:6px; color:#6f97b3; font-size:10.5px; }
-
-  /* Detail panel — the full shared-vendor sheet for a clicked committee. */
-  #panel { position:absolute; top:58px; right:18px; width:330px; max-width:82vw;
-    max-height:calc(100vh - 150px); overflow-y:auto; overscroll-behavior:contain;
-    background:var(--panel); border:1px solid var(--line); border-radius:10px;
-    padding:12px 14px; font-size:12px; z-index:7; display:none;
-    box-shadow:0 12px 32px rgba(0,0,0,0.45); }
-  #panel .phead { display:flex; align-items:flex-start; gap:8px; justify-content:space-between; }
-  #panel .pnm { font-weight:700; font-size:14px; line-height:1.25; }
-  #panel #pclose { flex:0 0 auto; background:none; border:none; color:var(--muted);
-    font-size:18px; line-height:1; cursor:pointer; padding:0 2px; }
-  #panel #pclose:hover { color:var(--text); }
-  #panel .pmeta { color:var(--muted); font-size:11px; margin:2px 0 4px; line-height:1.4; }
-  #panel .pally { border-top:1px solid var(--line); padding:9px 0 3px; }
-  #panel .pallyhd { display:flex; justify-content:space-between; gap:8px; align-items:baseline; cursor:pointer; }
-  #panel .pallyhd .an { color:var(--text); font-weight:600; }
-  #panel .pallyhd:hover .an { text-decoration:underline; }
-  #panel .pallyhd .ac { color:var(--muted); font-size:11px; white-space:nowrap; }
-  #panel .pvend { margin:6px 0 2px; display:flex; flex-wrap:wrap; gap:4px; }
-  #panel .chip { background:#1d2933; border:1px solid var(--line); border-radius:5px;
-    padding:2px 6px; font-size:11px; color:var(--text); }
-  #panel .chip b { color:var(--muted); font-weight:400; }
-  #panel .pmore { color:var(--muted); font-size:11px; align-self:center; }
-  #panel .pnone { color:var(--muted); font-size:11px; padding:6px 0; }
-
-  .hint { position:absolute; bottom:14px; right:18px; font-size:11px; color:var(--muted);
-    background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:7px 10px; }
-  #loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-    color:var(--muted); font-size:14px; }
-
-  @media (max-width: 640px), (max-height: 500px) {
-    header { padding:10px 12px; }
-    h1 { font-size:15px; }
-    .sub { font-size:11px; display:-webkit-box; -webkit-line-clamp:3;
-      -webkit-box-orient:vertical; overflow:hidden; }
-    #search { top:10px; right:12px; width:160px; font-size:16px; }
-    .legend { left:12px; bottom:12px; padding:8px 9px; font-size:11px;
-      max-width:64vw; max-height:40vh; overflow-y:auto; overscroll-behavior:contain; }
-    .legend .note { font-size:10px; }
-    .hint { display:none; }
-    #tip { max-width:min(290px, 80vw); }
-  }
+/* ── method ─────────────────────────────────────────────── */
+.method{max-width:70ch; font-size:14.5px; color:var(--ink2);}
+.method p{margin:10px 0;}
+.method h3{font-size:15px; font-weight:700; margin-top:22px; color:var(--ink);}
+table.types{border-collapse:collapse; width:100%; margin-top:14px; font-size:13.5px;}
+table.types th, table.types td{border-top:1px solid var(--hair); padding:8px 10px; text-align:left; vertical-align:top;}
+table.types th{font-family:Archivo,system-ui,sans-serif; font-weight:600; color:var(--ink); white-space:nowrap;}
+@media(max-width:640px){ table.types{display:block; overflow-x:auto;} .stat .v{font-size:23px;} }
+table.types td.n{font-family:"IBM Plex Mono",monospace; text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums;}
+footer{margin-top:64px; border-top:1px solid var(--hair); padding-top:18px; font-size:13px; color:var(--muted); font-family:Archivo,system-ui,sans-serif;}
 </style>
 </head>
 <body>
-<div id="wrap">
-  <canvas id="cv"></canvas>
-  <header>
-    <h1>Louisiana's Vendor Factions</h1>
-    <p class="sub">Each dot is a major political committee; a line joins two that <b>pay the same vendors</b> —
-       the media firms, pollsters, mail houses, and consultants that run a campaign. Commodity vendors
-       (Office Depot, the post office, Facebook) and contributions to candidates are filtered out, so a link
-       means a shared <b>operative</b>, not a shared errand. Thicker, shorter links = higher overlap, weighted so a
-       rare consultant outweighs a common one. <b>Hover</b> a node for a quick read;
-       <b>click</b> a committee to isolate it and open its full shared-vendor sheet — every operative it shares, with whom.</p>
-    <p class="also"><a href="index.html">Sibling map → <b>Donor Factions</b>: which committees draw from the same donors</a></p>
-    <p class="also"><a href="https://airwaves.charliestephens.xyz/">Spin-off → <b>Louisiana Airwaves</b>: the $121M of TV ad money behind the station buys above</a></p>
-  </header>
-  <input id="search" list="names" placeholder="Search committees…" autocomplete="off">
-  <datalist id="names"></datalist>
-  <div class="legend" id="legend"></div>
-  <div class="hint">scroll / pinch = zoom · drag = pan · tap node = focus · esc = reset</div>
-  <div id="tip"></div>
-  <div id="panel"></div>
-  <div id="loading">Loading the network…</div>
+<div class="wrap">
+<header class="top">
+  <p class="eyebrow">A companion to <a href="index.html">donor factions</a> and <a href="https://airwaves.charliestephens.xyz/">Louisiana Airwaves</a></p>
+  <h1>Louisiana's Vendor Factions</h1>
+  <p class="dek">Donors show who funds a campaign. <b>Vendors show who runs it.</b> Every Louisiana committee reports the consultants, pollsters, printers and media buyers it pays, and two committees paying the same operative are, in practice, part of the same operation. This page reads those payments both ways: <b>which firms work for whom</b>, and <b>which committees share a firm</b>.</p>
+  <div class="stats" id="stats"></div>
+</header>
+
+<section id="firms">
+  <p class="seclabel">The firms</p>
+  <h2>Who works for whom</h2>
+  <p class="intro" id="firmsIntro">Every consulting, polling, printing and media-buying firm with at least three committee clients, ranked by what those clients paid it. Pick a cycle to see who is hiring this time; filter by the clients' party to see each side's bench. <b>Click a firm</b> for its client list.</p>
+  <div class="controls">
+    <label class="ctl"><span>Cycle</span><div class="seg" id="cycleSeg" role="group" aria-label="Cycle"></div></label>
+    <label class="ctl"><span>Clients</span><div class="seg" id="partySeg" role="group" aria-label="Client party"></div></label>
+    <label class="ctl grow"><span>Find a firm or client</span><input type="search" id="firmSearch" placeholder="e.g. Baselice, Gumbo PAC, Mele…" autocomplete="off"></label>
+  </div>
+  <div class="legend"><span><i style="background:var(--rep)"></i>Republican clients</span><span><i style="background:var(--dem)"></i>Democratic</span><span><i style="background:var(--oth)"></i>PACs and other filers</span></div>
+  <div class="ftable" id="ftable" role="table" aria-label="Firms ranked by payments"></div>
+  <button class="more" id="moreBtn" hidden>Show more firms</button>
+  <p class="cap" id="firmsCap"></p>
+</section>
+
+<section id="network">
+  <p class="seclabel">The network</p>
+  <h2>Committees that share an operative</h2>
+  <p class="intro">Each dot is one of the 500 committees that spend the most on services; a line joins two that hired the same firms, weighted so a boutique consultant counts for more than a printer half the state uses. Clusters are blocs run by the same people. <b>Click a committee</b> for every operative it shares, and with whom.</p>
+  <div class="net" id="net">
+    <canvas id="cv" aria-label="Network of committees linked by shared vendors" role="img"></canvas>
+    <div class="nettools">
+      <input type="search" id="search" list="names" placeholder="Find a committee…" autocomplete="off">
+      <datalist id="names"></datalist>
+      <button class="iconbtn" id="zin" title="Zoom in" aria-label="Zoom in">+</button>
+      <button class="iconbtn" id="zout" title="Zoom out" aria-label="Zoom out">−</button>
+      <button class="iconbtn" id="zfit" title="Fit" aria-label="Fit to view">⤢</button>
+    </div>
+    <div class="netlegend" id="legend"></div>
+    <div class="nethint">drag to pan · ctrl/⌘ + scroll to zoom · esc to reset</div>
+    <div id="tip"></div>
+    <div id="panel"></div>
+    <div id="loading">Loading the network…</div>
+  </div>
+  <p class="cap" id="netCap"></p>
+</section>
+
+<section id="method">
+  <p class="seclabel">Method &amp; sources</p>
+  <h2>What counts as an operative</h2>
+  <div class="method">
+    <p>Built by <span class="mono">build_vendor_factions.py</span> from every Louisiana Ethics Administration expenditure filing since 2000 (2008 is missing from the upstream release). A payee carries no ID, so spellings are folded together (“Littlefield Consulting”, “Littlefield Consultants”) and a handful of known renames are merged.</p>
+    <p>The hard part is that most payees are not operatives. Each one is given a type, first from its name and then from what committees said they paid it for, summed by dollars across every filing. <b>Only operatives and field workers can link two committees.</b></p>
+    <table class="types" id="typesTbl"></table>
+    <h3>Three choices worth knowing</h3>
+    <p><b>Stations are left out of the links.</b> Two committees that bought time on WAFB are not allied; they are both running in Baton Rouge. That money is mapped on <a href="https://airwaves.charliestephens.xyz/">Louisiana Airwaves</a> and <a href="https://airwaves.charliestephens.xyz/radio.html">Louisiana Dial</a>; here each committee just carries its media total.</p>
+    <p><b>Private individuals are never named.</b> Canvassers, election-day workers and drivers are real evidence of a shared field operation, so they count toward a link, but they are not public figures and appear only as a count. People paid as named professionals (fundraisers, consultants) are listed like any firm. Former candidates paid as people are treated as contributions, since that is almost always what those rows are.</p>
+    <p><b>Very common firms still count in the table, not the graph.</b> A printer used by 600 committees tells you nothing about who is allied, so the graph drops any vendor paid by 100 or more committees. The firm table keeps them, because “who prints for whom” is still worth knowing.</p>
+    <h3>Cycles and party</h3>
+    <p>A cycle is the four years ending in a governor's election: the 2023 cycle runs 2020–2023, and 2027 is the cycle now under way. Party is the filer's own label, corrected where the filing says <span class="mono">OTH</span> but the alignment is public record (Gumbo PAC is Democratic, the RGA's Right Direction PAC Republican), from the same list Airwaves and the finance dashboard use.</p>
+  </div>
+</section>
+
+<footer>
+  Part of <a href="https://finance.charliestephens.xyz/">Louisiana campaign finance</a> · <a href="index.html">Donor factions</a> · <a href="https://airwaves.charliestephens.xyz/">Louisiana Airwaves</a> · <a href="https://airwaves.charliestephens.xyz/radio.html">Louisiana Dial</a> · <a href="https://airwaves.charliestephens.xyz/races.html">The races</a>. <span id="built"></span>
+</footer>
 </div>
 
 <script>
-const PARTY = {
-  DEM:{c:'#3b76e0',label:'Democrat'}, REP:{c:'#e0524d',label:'Republican'},
-  IND:{c:'#9b6bf0',label:'Independent'}, LBT:{c:'#d9a441',label:'Libertarian'},
-  GRN:{c:'#36a86f',label:'Green'}, OTH:{c:'#7d8b95',label:'PAC / committee'},
-};
-const cv = document.getElementById('cv'), ctx = cv.getContext('2d'), tip = document.getElementById('tip');
-let W, H, DPR = Math.min(window.devicePixelRatio||1, 2);
-function resize(){ W=window.innerWidth; H=window.innerHeight; cv.width=W*DPR; cv.height=H*DPR;
+const $ = id => document.getElementById(id);
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const PARTY_LABEL = {DEM:'Democrat', REP:'Republican', IND:'Independent', LBT:'Libertarian', GRN:'Green', OTH:'PAC / other'};
+const partyVar = p => p==='DEM' ? '--dem' : p==='REP' ? '--rep' : p==='IND' ? '--ind' : '--oth';
+function fmt(v){ v=Math.round(v); return v>=1e6 ? '$'+(v/1e6).toFixed(v>=1e7?0:1)+'M' : v>=1e3 ? '$'+Math.round(v/1e3)+'K' : '$'+v; }
+function full(v){ return '$'+Math.round(v).toLocaleString('en-US'); }
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function partyTag(p){ const k = (p==='DEM'||p==='REP') ? p : 'OTH'; return `<span class="ptag ${k}">${k==='OTH'?'OTH':p}</span>`; }
+
+/* ═════════════════════════ firms ═════════════════════════ */
+let FIRMS=null, COMS=[], CYCLES=[], cycleSel='all', partySel='all', query='', shown=40, openFirm=null;
+function bucket(p){ return p==='REP' ? 'REP' : p==='DEM' ? 'DEM' : 'OTH'; }
+function setSeg(el, opts, cur, onPick){
+  el.innerHTML = opts.map(([v,l])=>`<button type="button" data-v="${v}" aria-pressed="${String(v)===String(cur)}">${l}</button>`).join('');
+  el.querySelectorAll('button').forEach(b=>b.onclick=()=>onPick(b.dataset.v));
+}
+function readHash(){
+  const h = new URLSearchParams(location.hash.slice(1));
+  if(h.get('cy')) cycleSel = h.get('cy');
+  if(h.get('pa')) partySel = h.get('pa');
+  if(h.get('q')) query = h.get('q');
+  if(h.get('firm')) openFirm = h.get('firm');
+}
+function writeHash(){
+  const h = new URLSearchParams();
+  if(cycleSel!=='all') h.set('cy', cycleSel);
+  if(partySel!=='all') h.set('pa', partySel);
+  if(query) h.set('q', query);
+  if(openFirm) h.set('firm', openFirm);
+  const s = h.toString();
+  history.replaceState(null,'', s ? '#'+s : location.pathname+location.search);
+}
+function firmView(f){
+  // dollars in the current cycle / party filter, and the client roll-up
+  let total=0; const byP={REP:0,DEM:0,OTH:0}; const cl=new Map();
+  for(const [ci,cy,amt] of f.paid){
+    if(cycleSel!=='all' && String(cy)!==cycleSel) continue;
+    const c=COMS[ci], b=bucket(c[2]);
+    if(partySel!=='all' && b!==partySel) continue;
+    total+=amt; byP[b]+=amt;
+    let r=cl.get(ci); if(!r){ r={ci, total:0, cy:{}}; cl.set(ci,r); } r.total+=amt; r.cy[cy]=(r.cy[cy]||0)+amt;
+  }
+  return {total, byP, clients:[...cl.values()].sort((a,b)=>b.total-a.total)};
+}
+function renderFirms(){
+  const q = query.toLowerCase();
+  let rows = FIRMS.firms.map(f=>({f, v:firmView(f)})).filter(r=>r.v.total>0);
+  if(q) rows = rows.filter(r=> r.f.name.toLowerCase().includes(q) || r.v.clients.some(c=>COMS[c.ci][1].toLowerCase().includes(q)));
+  rows.sort((a,b)=>b.v.total-a.v.total);
+  const tbl = $('ftable');
+  let h = `<div class="fhead" role="row"><span class="rk">#</span><span>Firm · top clients</span><span class="r">Paid</span><span class="r">Clients</span><span class="mix">Client party</span></div>`;
+  if(!rows.length) h += `<div class="empty">No firm matches that filter.</div>`;
+  rows.slice(0, shown).forEach((r,i)=>{
+    const {f,v}=r, tot=v.total||1;
+    const top = v.clients.slice(0,3).map(c=>esc(COMS[c.ci][1])).join(' · ');
+    const mix = ['REP','DEM','OTH'].filter(p=>v.byP[p]>0).map(p=>`<span style="flex:${v.byP[p]};background:var(${partyVar(p)})" title="${PARTY_LABEL[p]||p}: ${full(v.byP[p])} (${Math.round(v.byP[p]/tot*100)}%)"></span>`).join('');
+    const isOpen = openFirm===f.name;
+    h += `<div class="frow" role="row" tabindex="0" aria-expanded="${isOpen}" data-firm="${esc(f.name)}">`+
+      `<span class="rk">${i+1}</span><span class="nm">${esc(f.name)}<small>${top}</small></span>`+
+      `<span class="amt r">${fmt(v.total)}</span><span class="n r">${v.clients.length}</span>`+
+      `<span class="mixcell"><span class="mixbar">${mix}</span></span></div>`;
+    if(isOpen) h += firmDetail(f, v);
+  });
+  tbl.innerHTML = h;
+  tbl.querySelectorAll('.frow').forEach(el=>{
+    const go=()=>{ openFirm = openFirm===el.dataset.firm ? null : el.dataset.firm; writeHash(); renderFirms(); };
+    el.onclick=go; el.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } };
+  });
+  $('moreBtn').hidden = rows.length <= shown;
+  $('moreBtn').textContent = `Show more firms (${(rows.length-shown).toLocaleString()} more)`;
+  const scope = cycleSel==='all' ? `${CYCLES[0]-3}–${FIRMS.generated.slice(0,4)}` : (cycleSel==='2027' ? `the 2027 cycle so far (2024 on)` : `the ${cycleSel} cycle (${cycleSel-3}–${cycleSel})`);
+  const pl = partySel==='all' ? '' : partySel==='REP' ? ', Republican clients only' : partySel==='DEM' ? ', Democratic clients only' : ', PACs and other filers only';
+  $('firmsCap').textContent = `${rows.length.toLocaleString()} firms paid in ${scope}${pl}. Dollars are what clients reported paying the firm, nominal, including what a media buyer passed through to stations. Payments under $250 from a client in a cycle are left out. Built ${FIRMS.generated}.`;
+}
+function firmDetail(f, v){
+  const cys = cycleSel==='all' ? CYCLES.filter(c=>v.clients.some(x=>x.cy[c])) : [ +cycleSel ];
+  let h = `<div class="fdetail"><div class="scroll"><table><thead><tr><th>Client</th>${cys.map(c=>`<th>${c===2027?'2027 so far':c+' cycle'}</th>`).join('')}${cys.length>1?'<th>Total</th>':''}</tr></thead><tbody>`;
+  v.clients.slice(0,60).forEach(c=>{
+    const com=COMS[c.ci];
+    h += `<tr><td>${esc(com[1])}${partyTag(com[2])}</td>${cys.map(cy=>c.cy[cy]?`<td>${fmt(c.cy[cy])}</td>`:'<td class="z">·</td>').join('')}${cys.length>1?`<td><b>${fmt(c.total)}</b></td>`:''}</tr>`;
+  });
+  h += `</tbody></table></div>`;
+  if(v.clients.length>60) h += `<p class="cap">+${v.clients.length-60} smaller clients.</p>`;
+  h += `<p class="cap">Each client links to its own filings on the <a href="https://finance.charliestephens.xyz/" target="_blank" rel="noopener">campaign-finance dashboard</a>, searchable by name.</p></div>`;
+  return h;
+}
+function bootFirms(data){
+  FIRMS=data; COMS=data.committees; CYCLES=data.cycles;
+  readHash();
+  const cyOpts=[['all','All years'], ...[...CYCLES].reverse().map(c=>[String(c), c===2027?'2027 so far':String(c)])];
+  const drawCy=()=>setSeg($('cycleSeg'), cyOpts, cycleSel, v=>{ cycleSel=v; shown=40; writeHash(); drawCy(); renderFirms(); });
+  const drawPa=()=>setSeg($('partySeg'), [['all','All'],['REP','Republican'],['DEM','Democratic'],['OTH','PACs & other']], partySel, v=>{ partySel=v; shown=40; writeHash(); drawPa(); renderFirms(); });
+  drawCy(); drawPa();
+  const inp=$('firmSearch'); inp.value=query;
+  let t=null; inp.addEventListener('input', ()=>{ clearTimeout(t); t=setTimeout(()=>{ query=inp.value.trim(); shown=40; writeHash(); renderFirms(); }, 150); });
+  $('moreBtn').onclick=()=>{ shown+=60; renderFirms(); };
+  renderFirms();
+}
+
+/* ═════════════════════════ stats + method ═════════════════════════ */
+function bootStats(g, firms){
+  const T=g.payeeTypes, o=T.operative.usd;
+  const top=firms.firms[0];
+  const tiles=[
+    [fmt(o), 'paid to consultants, pollsters, printers, fundraisers and media buyers since 2000'],
+    [firms.firms.length.toLocaleString(), 'firms with three or more committee clients'],
+    [fmt(top.total), `to ${esc(top.name)}, the biggest, from ${top.nClients} committees`],
+    [Math.round(T.field.vendors/1000)+'K', 'private individuals paid for field work: counted here, never named'],
+  ];
+  $('stats').innerHTML = tiles.map(([v,l])=>`<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+  const rows=[
+    ['operative','Operative','Consultants, pollsters, mail and print, media buyers, fundraisers, compliance, lawyers. The signal.','Named; makes links'],
+    ['field','Field worker','A private individual paid for canvassing, election-day or other campaign labour.','Counted in links, never named'],
+    ['media','Media outlet','TV and radio stations, cable ad sellers, newspapers, billboards.','Per-committee total only'],
+    ['commodity','Commodity','Restaurants, hotels, travel, retail, software and platforms, banks and payment processors.','Dropped'],
+    ['civic','Civic & political','Government, taxes and filing fees, schools, churches, chambers, clubs, charities, party dues; candidates paid as people.','Dropped'],
+  ];
+  $('typesTbl').innerHTML = `<tr><th>Type</th><th>What it covers</th><th style="text-align:right">Payees</th><th style="text-align:right">Paid</th><th>On this page</th></tr>`+
+    rows.map(([k,l,d,u])=>`<tr><th>${l}</th><td>${d}</td><td class="n">${T[k].vendors.toLocaleString()}</td><td class="n">${fmt(T[k].usd)}</td><td>${u}</td></tr>`).join('');
+  $('built').textContent = `Built ${g.generated}.`;
+}
+
+/* ═════════════════════════ network ═════════════════════════ */
+const net=$('net'), cv=$('cv'), ctx=cv.getContext('2d'), tip=$('tip'), panel=$('panel');
+let W, H, DPR=Math.min(window.devicePixelRatio||1, 2);
+function resize(){ W=net.clientWidth; H=net.clientHeight; cv.width=W*DPR; cv.height=H*DPR;
   cv.style.width=W+'px'; cv.style.height=H+'px'; ctx.setTransform(DPR,0,0,DPR,0,0); }
-window.addEventListener('resize', () => { resize(); draw(); });
+window.addEventListener('resize', ()=>{ resize(); draw(); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', ()=>{ readColors(); computeFactionColors(); buildLegend(); draw(); });
 resize();
+let COL={};
+function readColors(){
+  COL={ dem:css('--dem'), rep:css('--rep'), oth:css('--oth'), ind:css('--ind'), edge:css('--edge'),
+        label:css('--label'), halo:css('--halo'), ink:css('--ink'),
+        blocs:['--b1','--b2','--b3','--b4','--b5','--b6','--b7','--b8'].map(css), small:css('--bsmall') };
+}
+readColors();
+const partyColor = p => p==='DEM'?COL.dem : p==='REP'?COL.rep : p==='IND'?COL.ind : COL.oth;
+function loc(ev){ const r=cv.getBoundingClientRect(); return {x:ev.clientX-r.left, y:ev.clientY-r.top}; }
 
 let nodes=[], edges=[], byId={}, adj={};
 let view={x:0,y:0,k:1}, alpha=1, focus=null, hover=null;
 let META=null, colorMode='party', factions=[], factionOf={}, factionFocus=null;
-let weightMode='idf';   // 'idf' (IDF-weighted Jaccard) | 'count' (plain Jaccard)
-// Edge weight under the active mode; a rare shared vendor (high IDF) counts more.
-function ew(e){ return weightMode==='count' ? e.jaccard : (e.wjaccard!=null ? e.wjaccard : e.jaccard); }
-let pendingHash = decodeURIComponent(location.hash.slice(1)||'');
+const ew = e => e.wjaccard!=null ? e.wjaccard : e.jaccard;
 
-function boot(data){
-  document.getElementById('loading').style.display='none';
-  nodes = data.nodes; edges = data.edges;
-  byId = Object.fromEntries(nodes.map(n=>[n.id,n]));
-  const maxR = Math.max(...nodes.map(n=>n.spend||1));
+function bootGraph(data){
+  $('loading').style.display='none';
+  nodes=data.nodes; edges=data.edges; META=data;
+  byId=Object.fromEntries(nodes.map(n=>[n.id,n]));
+  const maxR=Math.max(...nodes.map(n=>n.spend||1));
   nodes.forEach((n,i)=>{
-    n.r = 4 + 22*Math.sqrt((n.spend||1)/maxR);
-    const a = (i/nodes.length)*Math.PI*2;
-    n.x = Math.cos(a)*340 + (Math.random()-0.5)*60;
-    n.y = Math.sin(a)*340 + (Math.random()-0.5)*60;
+    n.r=4+20*Math.sqrt((n.spend||1)/maxR);
+    const a=(i/nodes.length)*Math.PI*2;
+    n.x=Math.cos(a)*300+(Math.random()-0.5)*60; n.y=Math.sin(a)*300+(Math.random()-0.5)*60;
     n.vx=0; n.vy=0; adj[n.id]=[];
   });
   edges.forEach(e=>{ if(byId[e.a]&&byId[e.b]){ adj[e.a].push(e); adj[e.b].push(e); } });
-  view = { x:W/2, y:H/2, k:1 };
-  META = data;
-  computeFactions();
-  buildLegend();
-  buildSearch();
+  view={x:W/2, y:H/2, k:1};
+  computeFactions(); buildLegend(); buildSearch();
+  $('netCap').textContent = `${nodes.length} of the top ${META.params.top} committees by service spending have at least one link; ${edges.length} links. A link needs ${META.params.min_shared}+ shared operatives and ${(META.params.min_wjaccard*100).toFixed(0)}%+ weighted overlap; each committee keeps its ${META.params.max_per_node} strongest. All years, 2000 on.`;
   requestAnimationFrame(tick);
 }
 
-// ── faction detection ────────────────────────────────────────────────────────
-// Weighted label propagation over the shared-vendor graph: each node repeatedly
-// adopts the label carrying the most overlap among its neighbors. Clusters are
-// de-facto vendor blocs — committees wired to the same operatives.
-const FACTION_COLORS = {
-  REP: ['#e0524d','#e08b3b','#e07db8','#b8434f','#e8a07a'],
-  DEM: ['#3b76e0','#4fc3d9','#7a91e0','#2fa3a0','#5fd9a8'],
-  MIX: ['#9b6bf0','#36a86f','#e0b23f','#c46be0','#8fd94f','#4d9e83','#b5895a','#a586c9','#7d8b95'],
-};
-function factionLean(m){
-  const nr=m.filter(n=>n.party==='REP').length, nd=m.filter(n=>n.party==='DEM').length;
-  return nr>=m.length*2/3 ? 'REP' : nd>=m.length*2/3 ? 'DEM' : null;
-}
+// Blocs: weighted label propagation over the links; each bloc is named for the
+// committee that holds it together.
 function computeFactions(){
-  factionOf = {};
-  const label = {}; nodes.forEach(n=>label[n.id]=n.id);
+  factionOf={};
+  const label={}; nodes.forEach(n=>label[n.id]=n.id);
   for(let it=0; it<60; it++){
-    let changed = 0;
+    let changed=0;
     for(const n of nodes){
-      const w = {};
+      const w={};
       adj[n.id].forEach(e=>{ const o=e.a===n.id?e.b:e.a; w[label[o]]=(w[label[o]]||0)+ew(e); });
       let best=label[n.id], bw=0;
       for(const l in w) if(w[l]>bw || (w[l]===bw && l<best)){ bw=w[l]; best=l; }
@@ -191,376 +403,218 @@ function computeFactions(){
     }
     if(!changed) break;
   }
-  const groups = {};
-  nodes.forEach(n=>{ (groups[label[n.id]] = groups[label[n.id]]||[]).push(n); });
-  factions = Object.values(groups)
-    .map(m=>({ members:m, spend:m.reduce((s,n)=>s+(n.spend||0),0) }))
-    .sort((a,b)=>b.spend-a.spend);
-  const pools = { REP:[...FACTION_COLORS.REP], DEM:[...FACTION_COLORS.DEM], MIX:[...FACTION_COLORS.MIX] };
-  factions.forEach((f,i)=>{
-    f.id = i;
-    f.lean = factionLean(f.members);
-    let pool = pools[f.lean||'MIX'];
-    if(!pool.length && !f.lean) pool = pools.REP.length>=pools.DEM.length ? pools.REP : pools.DEM;
-    if(!pool.length) pool = pools.MIX;
-    f.color = (f.members.length>=3 && pool.length) ? pool.shift() : '#5b6a74';
-    f.members.forEach(n=>factionOf[n.id]=f);
-  });
-  factions.forEach(f=>{ f.hub = hubOf(f); f.glue = glueOf(f); f.name = factionName(f); });
-  const cnt = {}; factions.forEach(f=>cnt[f.name]=(cnt[f.name]||0)+1);
-  factions.forEach(f=>{ if(cnt[f.name]>1 && f.members.length>1) f.name += ' · '+f.hub.name.split(' ').pop(); });
+  const groups={}; nodes.forEach(n=>{ (groups[label[n.id]]=groups[label[n.id]]||[]).push(n); });
+  factions=Object.values(groups).map(m=>({members:m, spend:m.reduce((s,n)=>s+(n.spend||0),0)})).sort((a,b)=>b.spend-a.spend);
+  factions.forEach((f,i)=>{ f.id=i; f.members.forEach(n=>factionOf[n.id]=f); });
+  factions.forEach(f=>{ f.hub=hubOf(f); f.glue=glueOf(f); f.name = f.members.length===1 ? f.members[0].name : f.hub.name+' bloc'; });
+  computeFactionColors();
 }
-
-// The hub is the member most connected (by the active edge weight) to the rest
-// of its bloc — what actually holds it together.
+function computeFactionColors(){
+  let i=0; factions.forEach(f=>{ f.color = f.members.length>=3 && i<COL.blocs.length ? COL.blocs[i++] : COL.small; });
+}
 function hubOf(f){
   let best=f.members[0], bw=-1;
-  for(const n of f.members){
-    let w=0;
-    adj[n.id].forEach(e=>{ const o=e.a===n.id?e.b:e.a; if(factionOf[o]===f) w+=ew(e); });
-    if(w>bw || (w===bw && (n.spend||0)>(best.spend||0))){ bw=w; best=n; }
-  }
+  for(const n of f.members){ let w=0; adj[n.id].forEach(e=>{ const o=e.a===n.id?e.b:e.a; if(factionOf[o]===f) w+=ew(e); });
+    if(w>bw || (w===bw && n.spend>best.spend)){ bw=w; best=n; } }
   return best;
 }
-// The vendor gluing the most internal committee-pairs — the bloc's shared operative.
 function glueOf(f){
-  const set = new Set(f.members.map(n=>n.id)), c = {};
-  edges.forEach(e=>{ if(set.has(e.a)&&set.has(e.b)) (e.topVendors||[]).forEach(v=>{ const nm=v[0]; c[nm]=(c[nm]||0)+1; }); });
-  let best=null, bc=0; for(const v in c) if(c[v]>bc){ bc=c[v]; best=v; }
-  return best;
+  const set=new Set(f.members.map(n=>n.id)), c={};
+  edges.forEach(e=>{ if(set.has(e.a)&&set.has(e.b)) (e.topVendors||[]).forEach(v=>{ c[v[0]]=(c[v[0]]||0)+1; }); });
+  let best=null, bc=0; for(const v in c) if(c[v]>bc){ bc=c[v]; best=v; } return best;
 }
-function factionName(f){
-  const m=f.members;
-  if(m.length===1) return m[0].name;
-  return f.hub.name+' bloc';
-}
-function nodeColor(n){
-  return colorMode==='party' ? (PARTY[n.party]||PARTY.OTH).c : factionOf[n.id].color;
-}
+const nodeColor = n => colorMode==='party' ? partyColor(n.party) : factionOf[n.id].color;
 
 function buildLegend(){
-  let html = `<div class="modes"><button id="mParty" class="${colorMode==='party'?'on':''}">Party</button>`+
-             `<button id="mFaction" class="${colorMode==='faction'?'on':''}">Bloc</button></div>`;
-  html += `<div class="modes"><button id="wIdf" class="${weightMode==='idf'?'on':''}">Weight: IDF</button>`+
-          `<button id="wCount" class="${weightMode==='count'?'on':''}">shared count</button></div>`;
+  let h=`<div class="seg" style="margin-bottom:7px"><button type="button" id="mParty" aria-pressed="${colorMode==='party'}">Party</button><button type="button" id="mBloc" aria-pressed="${colorMode==='bloc'}">Bloc</button></div>`;
   if(colorMode==='party'){
-    const counts = {}; nodes.forEach(n=>counts[n.party]=(counts[n.party]||0)+1);
-    html += Object.keys(PARTY).filter(p=>counts[p]).map(p =>
-      `<div class="row"><span class="dot" style="background:${PARTY[p].c}"></span>${PARTY[p].label} <span style="color:var(--muted)">(${counts[p]})</span></div>`).join('');
+    const counts={}; nodes.forEach(n=>{ const k=['DEM','REP','IND'].includes(n.party)?n.party:'OTH'; counts[k]=(counts[k]||0)+1; });
+    h+=['REP','DEM','IND','OTH'].filter(p=>counts[p]).map(p=>`<div class="row"><span class="dot" style="background:${partyColor(p)}"></span>${PARTY_LABEL[p]} (${counts[p]})</div>`).join('');
   } else {
-    const big = factions.filter(f=>f.members.length>=3).slice(0,10);
-    html += big.map(f =>
-      `<div class="row f ${factionFocus===f.id?'sel':''}" data-f="${f.id}" title="${f.glue?('glued by '+f.glue):''}"><span class="dot" style="background:${f.color}"></span>${f.name.slice(0,26)} <span style="color:var(--muted)">(${f.members.length})</span></div>`).join('');
-    const rest = nodes.length - big.reduce((s,f)=>s+f.members.length,0);
-    if(rest>0) html += `<div class="row"><span class="dot" style="background:#5b6a74"></span>smaller blocs <span style="color:var(--muted)">(${rest})</span></div>`;
+    const big=factions.filter(f=>f.members.length>=3).slice(0,8);
+    h+=big.map(f=>`<div class="row f ${factionFocus===f.id?'sel':''}" data-f="${f.id}" title="${f.glue?'glued by '+esc(f.glue):''}"><span class="dot" style="background:${f.color}"></span>${esc(f.name.slice(0,30))} (${f.members.length})</div>`).join('');
+    const rest=nodes.length-big.reduce((s,f)=>s+f.members.length,0);
+    if(rest>0) h+=`<div class="row"><span class="dot" style="background:${COL.small}"></span>smaller blocs (${rest})</div>`;
   }
-  html += `<div class="stat">${nodes.length} committees · ${edges.length} shared-vendor links</div>`;
-  html += `<div class="note">Top ${META.params.top} committees by service spend; a link needs ≥${META.params.min_shared} shared vendors and ≥${(META.params.min_wjaccard*100).toFixed(0)}% weighted overlap. Vendors paid by ≥${META.params.stopword_df} committees dropped as commodity. Built ${META.generated}.</div>`;
-  const legend = document.getElementById('legend');
-  legend.innerHTML = html;
-  document.getElementById('mParty').onclick   = ()=>setMode('party');
-  document.getElementById('mFaction').onclick = ()=>setMode('faction');
-  document.getElementById('wIdf').onclick   = ()=>setWeight('idf');
-  document.getElementById('wCount').onclick = ()=>setWeight('count');
-  legend.querySelectorAll('.row.f').forEach(el=>el.onclick = ()=>{
-    const fid = +el.dataset.f;
-    factionFocus = (factionFocus===fid) ? null : fid;
-    buildLegend(); _needsDraw=true; requestAnimationFrame(tick);
-  });
+  const L=$('legend'); L.innerHTML=h;
+  $('mParty').onclick=()=>{ colorMode='party'; factionFocus=null; buildLegend(); redraw(); };
+  $('mBloc').onclick=()=>{ colorMode='bloc'; buildLegend(); redraw(); };
+  L.querySelectorAll('.row.f').forEach(el=>el.onclick=()=>{ const id=+el.dataset.f; factionFocus=factionFocus===id?null:id; buildLegend(); redraw(); });
 }
-function setMode(m){
-  colorMode = m; if(m==='party') factionFocus = null;
-  buildLegend(); _needsDraw=true; requestAnimationFrame(tick);
-}
-function setWeight(m){
-  if(m===weightMode) return;
-  weightMode = m; factionFocus = null;
-  computeFactions();
-  buildLegend();
-  alpha = Math.max(alpha, 0.6);
-  _fitted = false; _settledFit = false; _userView = false;
-  if(hover) showTip(hover, sx(hover), sy(hover));
-  _needsDraw=true; requestAnimationFrame(tick);
-}
-
-// ── search: type a committee name to fly to it ──────────────────────────────
 function buildSearch(){
-  document.getElementById('names').innerHTML =
-    nodes.map(n=>`<option value="${n.name.replace(/"/g,'&quot;')}">`).join('');
-  const inp = document.getElementById('search');
+  $('names').innerHTML=nodes.map(n=>`<option value="${esc(n.name)}">`).join('');
+  const inp=$('search');
   inp.addEventListener('change', ()=>{
-    const q = inp.value.trim().toLowerCase(); if(!q) return;
-    const n = nodes.find(x=>x.name.toLowerCase()===q) || nodes.find(x=>x.name.toLowerCase().includes(q));
-    if(n){
-      focus=n; hover=n; updateHash();
-      if(factionFocus!=null){ factionFocus=null; buildLegend(); }
-      flyTo(n); showPanel(n); inp.blur();
-    }
+    const q=inp.value.trim().toLowerCase(); if(!q) return;
+    const n=nodes.find(x=>x.name.toLowerCase()===q) || nodes.find(x=>x.name.toLowerCase().includes(q));
+    if(n){ focus=n; hover=n; factionFocus=null; flyTo(n); showPanel(n); inp.blur(); }
   });
 }
 function flyTo(n){
-  const k = Math.max(view.k, 1.0);
-  const from = {x:view.x, y:view.y, k:view.k}, t0 = performance.now();
+  const k=Math.max(view.k,1), from={...view}, t0=performance.now();
   (function anim(t){
-    const p = Math.min(1, (t-t0)/450), e = p*(2-p);
-    const tx = W/2 - n.x*k, ty = H/2 - n.y*k;
-    view.x = from.x+(tx-from.x)*e; view.y = from.y+(ty-from.y)*e; view.k = from.k+(k-from.k)*e;
-    _needsDraw=true; requestAnimationFrame(tick);
-    if(p<1) requestAnimationFrame(anim);
-    else if(focus===n) showTip(n, sx(n), sy(n));
+    const p=Math.min(1,(t-t0)/450), e=p*(2-p);
+    view.x=from.x+((W/2-n.x*k)-from.x)*e; view.y=from.y+((H/2-n.y*k)-from.y)*e; view.k=from.k+(k-from.k)*e;
+    redraw(); if(p<1) requestAnimationFrame(anim);
   })(t0);
 }
-function updateHash(){
-  history.replaceState(null, '', focus ? '#'+encodeURIComponent(focus.id)
-                                       : location.pathname+location.search);
-}
 
-// ── force simulation ───────────────────────────────────────────────────────
 function step(){
-  const REP = 3200*Math.max(1, nodes.length/250), CENTER = 0.045, DAMP = 0.86;
+  const REP=2600, CENTER=0.05, DAMP=0.86;
   for(let i=0;i<nodes.length;i++){
     const a=nodes[i];
     for(let j=i+1;j<nodes.length;j++){
-      const b=nodes[j]; let dx=a.x-b.x, dy=a.y-b.y; let d2=dx*dx+dy*dy||0.01;
-      const f = REP/d2; const d=Math.sqrt(d2);
-      const fx=dx/d*f, fy=dy/d*f;
-      a.vx+=fx; a.vy+=fy; b.vx-=fx; b.vy-=fy;
+      const b=nodes[j]; const dx=a.x-b.x, dy=a.y-b.y; const d2=dx*dx+dy*dy||0.01, d=Math.sqrt(d2), f=REP/d2;
+      a.vx+=dx/d*f; a.vy+=dy/d*f; b.vx-=dx/d*f; b.vy-=dy/d*f;
     }
-    a.vx -= a.x*CENTER; a.vy -= a.y*CENTER;
+    a.vx-=a.x*CENTER; a.vy-=a.y*CENTER;
   }
   edges.forEach(e=>{
-    const a=byId[e.a], b=byId[e.b]; if(!a||!b) return;
-    let dx=b.x-a.x, dy=b.y-a.y; const d=Math.sqrt(dx*dx+dy*dy)||0.01;
-    const w = ew(e);
-    const ideal = 40 + 120*(1-w);
-    const k = 0.02 + 0.10*w;
-    const f = (d-ideal)*k;
-    const fx=dx/d*f, fy=dy/d*f;
-    a.vx+=fx*alpha; a.vy+=fy*alpha; b.vx-=fx*alpha; b.vy-=fy*alpha;
+    const a=byId[e.a], b=byId[e.b]; const dx=b.x-a.x, dy=b.y-a.y, d=Math.sqrt(dx*dx+dy*dy)||0.01, w=ew(e);
+    const f=(d-(40+120*(1-w)))*(0.02+0.10*w);
+    a.vx+=dx/d*f*alpha; a.vy+=dy/d*f*alpha; b.vx-=dx/d*f*alpha; b.vy-=dy/d*f*alpha;
   });
   nodes.forEach(n=>{ if(n===dragNode) return; n.vx*=DAMP; n.vy*=DAMP; n.x+=n.vx*alpha; n.y+=n.vy*alpha; });
 }
 function fitView(){
   if(!nodes.length) return;
-  const pct=(arr,p)=>{ const s=[...arr].sort((a,b)=>a-b); return s[Math.floor((s.length-1)*p)]; };
   const xs=nodes.map(n=>n.x), ys=nodes.map(n=>n.y);
-  const minX=pct(xs,0.03), maxX=pct(xs,0.97), minY=pct(ys,0.03), maxY=pct(ys,0.97);
-  const gw=(maxX-minX)||1, gh=(maxY-minY)||1, pad=Math.min(80, W*0.07);
-  view.k = Math.max(W<640?0.12:0.25, Math.min((W-pad*2)/gw, (H-pad*2)/gh, 1.3));
-  view.x = W/2 - (minX+maxX)/2*view.k;
-  view.y = H/2 - (minY+maxY)/2*view.k;
+  const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+  const pad=40;
+  view.k=Math.max(0.15, Math.min((W-pad*2)/((maxX-minX)||1), (H-pad*2-40)/((maxY-minY)||1), 1.4));
+  view.x=W/2-(minX+maxX)/2*view.k; view.y=H/2+20-(minY+maxY)/2*view.k;
 }
-let _needsDraw=false, _fitted=false, _settledFit=false, _userView=false;
+let _needsDraw=false, _fitted=false, _userView=false;
 function tick(){
-  const wasLive = alpha>0;
-  if(alpha>0.02){ step(); alpha*=0.992; } else alpha=0;
-  if(!_fitted && alpha>0 && alpha<0.35){
-    _fitted=true; fitView();
-    if(pendingHash){ const n=byId[pendingHash]; pendingHash=''; if(n){ focus=n; hover=n; flyTo(n); showPanel(n); } }
-  }
-  if(wasLive && alpha===0 && !_settledFit){
-    _settledFit=true; if(!_userView) fitView();
-  }
+  if(alpha>0.02){ step(); alpha*=0.985; } else alpha=0;
+  if(!_userView && alpha>0) fitView();
+  if(!_fitted && alpha===0){ _fitted=true; if(!_userView) fitView(); }
   draw();
   if(alpha>0 || _needsDraw){ _needsDraw=false; requestAnimationFrame(tick); }
 }
-function kick(){ if(alpha<0.05){ alpha=0.2; } _needsDraw=true; requestAnimationFrame(tick); }
-
-// ── rendering ──────────────────────────────────────────────────────────────
-function sx(n){ return view.x + n.x*view.k; }
-function sy(n){ return view.y + n.y*view.k; }
+function redraw(){ _needsDraw=true; requestAnimationFrame(tick); }
+function kick(){ if(alpha<0.05) alpha=0.2; redraw(); }
+const sx=n=>view.x+n.x*view.k, sy=n=>view.y+n.y*view.k;
 function draw(){
   ctx.clearRect(0,0,W,H);
   const focusSet = focus ? new Set([focus.id, ...adj[focus.id].map(e=>e.a===focus.id?e.b:e.a)]) : null;
-  const inFaction = id => factionFocus==null || factionOf[id].id===factionFocus;
-  const edim = Math.min(1, 500/(edges.length||1));
+  const inF = id => factionFocus==null || factionOf[id].id===factionFocus;
   edges.forEach(e=>{
-    const a=byId[e.a], b=byId[e.b]; if(!a||!b) return;
-    const inFocus = (!focusSet || (focusSet.has(e.a)&&focusSet.has(e.b)&&(e.a===focus.id||e.b===focus.id)))
-                    && inFaction(e.a) && inFaction(e.b);
-    const w = ew(e);
-    ctx.strokeStyle = inFocus ? `rgba(150,180,200,${(0.25+w*1.2)*(focusSet?1:edim)})` : 'rgba(120,140,155,0.05)';
-    ctx.lineWidth = inFocus ? (0.5+w*7) : 0.5;
+    const a=byId[e.a], b=byId[e.b];
+    const on=(!focusSet || e.a===focus.id || e.b===focus.id) && inF(e.a) && inF(e.b);
+    const w=ew(e);
+    ctx.strokeStyle = on ? `rgba(${COL.edge},${Math.min(.9,0.22+w*1.6)})` : `rgba(${COL.edge},0.06)`;
+    ctx.lineWidth = on ? 0.6+w*8 : 0.5;
     ctx.beginPath(); ctx.moveTo(sx(a),sy(a)); ctx.lineTo(sx(b),sy(b)); ctx.stroke();
   });
   nodes.forEach(n=>{
-    const dim = (focusSet && !focusSet.has(n.id)) || !inFaction(n.id);
-    ctx.globalAlpha = dim ? 0.18 : 1;
+    const dim=(focusSet && !focusSet.has(n.id)) || !inF(n.id);
+    ctx.globalAlpha=dim?0.15:1;
     ctx.beginPath(); ctx.arc(sx(n),sy(n), n.r*Math.sqrt(view.k), 0, Math.PI*2);
-    ctx.fillStyle = nodeColor(n); ctx.fill();
-    if(n===hover || n===focus){ ctx.lineWidth=2; ctx.strokeStyle='#fff'; ctx.stroke(); }
-    ctx.globalAlpha = 1;
+    ctx.fillStyle=nodeColor(n); ctx.fill();
+    ctx.lineWidth=(n===hover||n===focus)?2.2:1; ctx.strokeStyle=(n===hover||n===focus)?COL.ink:COL.halo; ctx.stroke();
+    ctx.globalAlpha=1;
   });
-  ctx.font = '11px -apple-system,sans-serif'; ctx.fillStyle='#cfd9e0';
-  ctx.textAlign='center'; ctx.textBaseline='bottom';
-  const labelSet = new Set(nodes.slice(0,10).map(n=>n.id));
-  if(focus){ labelSet.add(focus.id); adj[focus.id].forEach(e=>labelSet.add(e.a===focus.id?e.b:e.a)); }
-  if(hover) labelSet.add(hover.id);
+  ctx.font='600 11px Archivo, system-ui, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='bottom';
+  ctx.lineJoin='round'; ctx.lineWidth=3.5; ctx.strokeStyle=COL.halo; ctx.fillStyle=COL.label;
+  const lab=new Set(nodes.slice(0,12).map(n=>n.id));
+  if(focus){ lab.add(focus.id); adj[focus.id].forEach(e=>lab.add(e.a===focus.id?e.b:e.a)); }
+  if(hover) lab.add(hover.id);
   nodes.forEach(n=>{
-    if(!labelSet.has(n.id)) return;
-    if(focusSet && !focusSet.has(n.id)) return;
-    if(!inFaction(n.id)) return;
-    ctx.fillText(n.name.slice(0,26), sx(n), sy(n)-n.r*Math.sqrt(view.k)-3);
+    if(!lab.has(n.id) || (focusSet && !focusSet.has(n.id)) || !inF(n.id)) return;
+    const t=n.name.length>28 ? n.name.slice(0,27)+'…' : n.name, y=sy(n)-n.r*Math.sqrt(view.k)-3;
+    ctx.strokeText(t, sx(n), y); ctx.fillText(t, sx(n), y);
   });
 }
-
-// ── interaction ────────────────────────────────────────────────────────────
 function nodeAt(px,py){
-  let best=null, bestD=Infinity;
-  for(const n of nodes){ const dx=px-sx(n), dy=py-sy(n); const d=dx*dx+dy*dy;
-    const rr=(n.r*Math.sqrt(view.k)+4)**2; if(d<rr && d<bestD){ best=n; bestD=d; } }
+  let best=null, bd=Infinity;
+  for(const n of nodes){ const dx=px-sx(n), dy=py-sy(n), d=dx*dx+dy*dy, rr=(n.r*Math.sqrt(view.k)+4)**2; if(d<rr && d<bd){ best=n; bd=d; } }
   return best;
 }
-let dragNode=null, panning=false, last={x:0,y:0};
-cv.addEventListener('mousedown', ev=>{
-  const n = nodeAt(ev.clientX, ev.clientY);
-  if(n){ dragNode=n; } else { panning=true; cv.classList.add('grabbing'); }
-  last={x:ev.clientX,y:ev.clientY};
-});
+let dragNode=null, panning=false, last={x:0,y:0}, down={x:0,y:0};
+cv.addEventListener('mousedown', ev=>{ const p=loc(ev); const n=nodeAt(p.x,p.y); if(n) dragNode=n; else { panning=true; cv.classList.add('grabbing'); } last=down=p; });
 window.addEventListener('mousemove', ev=>{
-  if(dragNode){ dragNode.x=(ev.clientX-view.x)/view.k; dragNode.y=(ev.clientY-view.y)/view.k; dragNode.vx=dragNode.vy=0; kick(); return; }
-  if(panning){ _userView=true; view.x+=ev.clientX-last.x; view.y+=ev.clientY-last.y; last={x:ev.clientX,y:ev.clientY}; _needsDraw=true; requestAnimationFrame(tick); return; }
-  const n = nodeAt(ev.clientX, ev.clientY);
-  if(n!==hover){ hover=n; _needsDraw=true; requestAnimationFrame(tick); }
-  if(n) showTip(n, ev.clientX, ev.clientY); else tip.style.display='none';
+  const p=loc(ev);
+  if(dragNode){ dragNode.x=(p.x-view.x)/view.k; dragNode.y=(p.y-view.y)/view.k; dragNode.vx=dragNode.vy=0; _userView=true; kick(); return; }
+  if(panning){ _userView=true; view.x+=p.x-last.x; view.y+=p.y-last.y; last=p; redraw(); return; }
+  if(p.x<0||p.y<0||p.x>W||p.y>H){ if(hover){ hover=null; tip.style.display='none'; redraw(); } return; }
+  const n=nodeAt(p.x,p.y);
+  if(n!==hover){ hover=n; redraw(); }
+  if(n) showTip(n,p.x,p.y); else tip.style.display='none';
 });
 window.addEventListener('mouseup', ()=>{ dragNode=null; panning=false; cv.classList.remove('grabbing'); });
 cv.addEventListener('click', ev=>{
-  if(Math.abs(ev.clientX-last.x)>4||Math.abs(ev.clientY-last.y)>4) return;
-  const n = nodeAt(ev.clientX, ev.clientY);
-  focus = (n===focus) ? null : n; updateHash();
-  if(focus) showPanel(focus); else hidePanel();
-  _needsDraw=true; requestAnimationFrame(tick);
+  const p=loc(ev); if(Math.abs(p.x-down.x)>4||Math.abs(p.y-down.y)>4) return;
+  const n=nodeAt(p.x,p.y); focus=(n===focus)?null:n;
+  if(focus) showPanel(focus); else panel.style.display='none'; redraw();
 });
-window.addEventListener('keydown', ev=>{
-  if(ev.key==='Escape'){
-    focus=null; hover=null; factionFocus=null; tip.style.display='none'; hidePanel();
-    updateHash(); buildLegend(); _needsDraw=true; requestAnimationFrame(tick);
-  }
-});
-function zoomAt(cx, cy, f){
-  _userView=true;
-  view.x = cx - (cx-view.x)*f;
-  view.y = cy - (cy-view.y)*f;
-  view.k *= f; _needsDraw=true; requestAnimationFrame(tick);
-}
-cv.addEventListener('wheel', ev=>{
-  ev.preventDefault();
-  zoomAt(ev.clientX, ev.clientY, ev.deltaY<0 ? 1.12 : 1/1.12);
+window.addEventListener('keydown', ev=>{ if(ev.key==='Escape'){ focus=null; hover=null; factionFocus=null; tip.style.display='none'; panel.style.display='none'; buildLegend(); redraw(); } });
+function zoomAt(cx,cy,f){ _userView=true; view.x=cx-(cx-view.x)*f; view.y=cy-(cy-view.y)*f; view.k*=f; redraw(); }
+cv.addEventListener('wheel', ev=>{ if(!(ev.ctrlKey||ev.metaKey)) return; ev.preventDefault(); const p=loc(ev); zoomAt(p.x,p.y, ev.deltaY<0?1.12:1/1.12); }, {passive:false});
+$('zin').onclick=()=>zoomAt(W/2,H/2,1.25); $('zout').onclick=()=>zoomAt(W/2,H/2,0.8);
+$('zfit').onclick=()=>{ _userView=false; fitView(); redraw(); };
+// touch: one finger pans or drags, two pinch
+let pinch=0, pmid={x:0,y:0}, moved=false, tap={x:0,y:0};
+const tl=t=>{ const r=cv.getBoundingClientRect(); return {x:t.clientX-r.left, y:t.clientY-r.top}; };
+cv.addEventListener('touchstart', ev=>{ ev.preventDefault(); const t=ev.touches;
+  if(t.length===1){ const p=tl(t[0]); const n=nodeAt(p.x,p.y); if(n) dragNode=n; else panning=true; last=tap=p; moved=false; }
+  else if(t.length>=2){ dragNode=null; panning=false; const a=tl(t[0]), b=tl(t[1]); pinch=Math.hypot(a.x-b.x,a.y-b.y); pmid={x:(a.x+b.x)/2,y:(a.y+b.y)/2}; }
 }, {passive:false});
-
-// ── touch ───────────────────────────────────────────────────────────────────
-let pinchDist=0, pinchMid={x:0,y:0}, touchMoved=false, tapStart={x:0,y:0};
-function touchDist(t){ const dx=t[0].clientX-t[1].clientX, dy=t[0].clientY-t[1].clientY; return Math.hypot(dx,dy); }
-function touchMid(t){ return { x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2 }; }
-cv.addEventListener('touchstart', ev=>{
-  ev.preventDefault();
-  const t = ev.touches;
-  if(t.length===1){
-    const n = nodeAt(t[0].clientX, t[0].clientY);
-    if(n){ dragNode=n; } else { panning=true; }
-    last = tapStart = { x:t[0].clientX, y:t[0].clientY };
-    touchMoved=false;
-  } else if(t.length>=2){
-    dragNode=null; panning=false;
-    pinchDist = touchDist(t); pinchMid = touchMid(t);
-  }
-}, {passive:false});
-cv.addEventListener('touchmove', ev=>{
-  ev.preventDefault();
-  const t = ev.touches;
-  if(t.length>=2){
-    const d = touchDist(t), m = touchMid(t);
-    if(pinchDist>0) zoomAt(m.x, m.y, d/pinchDist);
-    view.x += m.x-pinchMid.x; view.y += m.y-pinchMid.y;
-    pinchDist=d; pinchMid=m; touchMoved=true;
-    _needsDraw=true; requestAnimationFrame(tick);
-  } else if(t.length===1){
-    const x=t[0].clientX, y=t[0].clientY;
-    if(Math.abs(x-tapStart.x)>4||Math.abs(y-tapStart.y)>4) touchMoved=true;
-    if(dragNode){ dragNode.x=(x-view.x)/view.k; dragNode.y=(y-view.y)/view.k; dragNode.vx=dragNode.vy=0; kick(); }
-    else if(panning){ _userView=true; view.x+=x-last.x; view.y+=y-last.y; _needsDraw=true; requestAnimationFrame(tick); }
-    last={x,y};
-  }
+cv.addEventListener('touchmove', ev=>{ ev.preventDefault(); const t=ev.touches;
+  if(t.length>=2){ const a=tl(t[0]), b=tl(t[1]); const d=Math.hypot(a.x-b.x,a.y-b.y), m={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+    if(pinch>0) zoomAt(m.x,m.y,d/pinch); view.x+=m.x-pmid.x; view.y+=m.y-pmid.y; pinch=d; pmid=m; moved=true; redraw(); }
+  else if(t.length===1){ const p=tl(t[0]); if(Math.abs(p.x-tap.x)>4||Math.abs(p.y-tap.y)>4) moved=true;
+    if(dragNode){ dragNode.x=(p.x-view.x)/view.k; dragNode.y=(p.y-view.y)/view.k; dragNode.vx=dragNode.vy=0; _userView=true; kick(); }
+    else if(panning){ _userView=true; view.x+=p.x-last.x; view.y+=p.y-last.y; redraw(); } last=p; }
 }, {passive:false});
 cv.addEventListener('touchend', ev=>{
   if(ev.touches.length===0){
-    if(!touchMoved){
-      const n = nodeAt(tapStart.x, tapStart.y);
-      focus = (n===focus) ? null : n; updateHash();
-      hover = n;
-      if(n) showTip(n, tapStart.x, tapStart.y); else tip.style.display='none';
-      if(focus) showPanel(focus); else hidePanel();
-    }
-    dragNode=null; panning=false; pinchDist=0;
-    _needsDraw=true; requestAnimationFrame(tick);
-  } else if(ev.touches.length===1){
-    panning=true; dragNode=null; pinchDist=0;
-    last={ x:ev.touches[0].clientX, y:ev.touches[0].clientY };
+    if(!moved){ const n=nodeAt(tap.x,tap.y); focus=(n===focus)?null:n; hover=n; tip.style.display='none'; if(focus) showPanel(focus); else panel.style.display='none'; }
+    dragNode=null; panning=false; pinch=0; redraw();
   }
 }, {passive:false});
 
-function fmt(v){ return v>=1e6 ? '$'+(v/1e6).toFixed(1)+'M' : v>=1e3 ? '$'+(v/1e3).toFixed(0)+'K' : '$'+v; }
-function esc(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function showTip(n, px, py){
-  const allies = adj[n.id].map(e=>({ o:byId[e.a===n.id?e.b:e.a], shared:e.shared, j:ew(e), vendors:e.topVendors||[] }))
-    .sort((a,b)=>b.j-a.j).slice(0,4);
-  const f = factionOf[n.id];
-  tip.innerHTML = `<div class="nm">${esc(n.name)}</div>`+
-    `<div class="meta">${(PARTY[n.party]||PARTY.OTH).label} · spent ${fmt(n.spend)} across ${n.nVendors.toLocaleString()} vendors`+
-    (f && f.members.length>1 ? `<br>${esc(f.name)} (${f.members.length} committees)` : '')+`</div>`+
-    (allies.length ? `<div class="allies">Shares vendors with:<br>`+
-      allies.map(a=>{
-        const names = a.vendors.slice(0,4).map(v=>esc(v[0]));
-        const more = a.shared - names.length;
-        return `<span class="a">${esc(a.o.name.slice(0,30))}</span> <span class="j">— ${a.shared} shared (${(a.j*100).toFixed(0)}%)</span>`+
-          (names.length ? `<br><span class="v">via ${names.join(', ')}${more>0?` +${more} more`:''}</span>` : '');
-      }).join('<br>')+`</div><div class="tiphint">click for the full shared-vendor sheet →</div>` : '');
+function alliesOf(n){
+  return adj[n.id].map(e=>({o:byId[e.a===n.id?e.b:e.a], shared:e.shared, field:e.field||0, j:ew(e), vendors:e.topVendors||[]})).sort((a,b)=>b.j-a.j);
+}
+function metaLine(n){
+  const f=factionOf[n.id];
+  return `${PARTY_LABEL[n.party]||'PAC / other'} · ${fmt(n.spend)} on services`+
+    (n.media ? ` · ${fmt(n.media)} to ${n.nMedia} media outlets` : '')+
+    (f && f.members.length>1 ? `<br>${esc(f.name)} (${f.members.length})` : '');
+}
+function showTip(n,px,py){
+  const al=alliesOf(n).slice(0,3);
+  tip.innerHTML=`<div class="nm">${esc(n.name)}</div><div class="meta">${metaLine(n)}</div>`+
+    (al.length ? `<div class="allies">${al.map(a=>`<b>${esc(a.o.name.slice(0,32))}</b> · ${a.shared} shared`+
+      (a.vendors.length?`<br><span class="v">via ${a.vendors.slice(0,3).map(v=>esc(v[0])).join(', ')}</span>`:'')).join('<br>')}</div>` : '');
   tip.style.display='block';
-  const tw = tip.offsetWidth, th = tip.offsetHeight;
-  tip.style.left = Math.min(px+14, W-tw-10)+'px';
-  tip.style.top  = Math.min(py+14, H-th-10)+'px';
+  const tw=tip.offsetWidth, th=tip.offsetHeight;
+  tip.style.left=Math.max(6, Math.min(px+14, W-tw-8))+'px'; tip.style.top=Math.max(6, Math.min(py+14, H-th-8))+'px';
 }
-
-// ── detail panel: the full shared-vendor sheet for a clicked committee ────────
-const panel = document.getElementById('panel');
 function showPanel(n){
-  const allies = adj[n.id].map(e=>({ o:byId[e.a===n.id?e.b:e.a], shared:e.shared, j:ew(e), vendors:e.topVendors||[] }))
-    .sort((a,b)=>b.j-a.j);
-  const f = factionOf[n.id];
-  let html = `<div class="phead"><span class="pnm">${esc(n.name)}</span><button id="pclose" title="close" aria-label="close">×</button></div>`+
-    `<div class="pmeta">${(PARTY[n.party]||PARTY.OTH).label} · spent ${fmt(n.spend)} · ${n.nVendors.toLocaleString()} vendors`+
-    (f && f.members.length>1 ? ` · ${esc(f.name)}` : '')+`</div>`;
-  if(!allies.length){
-    html += `<div class="pnone">No shared-vendor links with other graph committees.</div>`;
-  } else {
-    allies.forEach(a=>{
-      html += `<div class="pally"><div class="pallyhd" data-id="${esc(a.o.id)}">`+
-        `<span class="an">${esc(a.o.name)}</span><span class="ac">${a.shared} shared · ${(a.j*100).toFixed(0)}%</span></div>`+
-        `<div class="pvend">`+
-        a.vendors.map(v=>`<span class="chip">${esc(v[0])} <b>·${v[1]}</b></span>`).join('')+
-        (a.shared > a.vendors.length ? `<span class="pmore">+${a.shared - a.vendors.length} more (long-tail one-offs)</span>` : '')+
-        `</div></div>`;
-    });
-  }
-  panel.innerHTML = html;
-  panel.style.display = 'block';
-  panel.scrollTop = 0;
-  document.getElementById('pclose').onclick = ()=>{
-    focus=null; hidePanel(); updateHash(); _needsDraw=true; requestAnimationFrame(tick);
-  };
-  panel.querySelectorAll('.pallyhd').forEach(el=> el.onclick = ()=>{
-    const t = byId[el.dataset.id];
-    if(t){ focus=t; hover=t; if(factionFocus!=null){ factionFocus=null; buildLegend(); } updateHash(); flyTo(t); showPanel(t); }
+  tip.style.display='none';
+  const al=alliesOf(n);
+  let h=`<div class="phead"><span class="pnm">${esc(n.name)}</span><button id="pclose" aria-label="Close">×</button></div><div class="pmeta">${metaLine(n)}</div>`;
+  if(!al.length) h+=`<div class="pmeta">No links to other committees in the graph.</div>`;
+  al.forEach(a=>{
+    const named=a.vendors.length, rest=a.shared-named-a.field;
+    h+=`<div class="pally"><div class="pallyhd" data-id="${esc(a.o.id)}"><span class="an">${esc(a.o.name)}</span><span class="ac">${a.shared} shared</span></div><div class="pvend">`+
+      a.vendors.map(v=>`<span class="chip" title="paid by ${v[1]} committees">${esc(v[0])} <b>·${v[1]}</b></span>`).join('')+
+      (a.field ? `<span class="chip anon">${a.field} field worker${a.field>1?'s':''} (not named)</span>` : '')+
+      (rest>0 ? `<span class="pmore">+${rest} more</span>` : '')+`</div></div>`;
   });
+  h+=`<p class="pmeta" style="margin-top:10px">The number after a firm is how many committees have paid it.</p>`;
+  panel.innerHTML=h; panel.style.display='block'; panel.scrollTop=0;
+  $('pclose').onclick=()=>{ focus=null; panel.style.display='none'; redraw(); };
+  panel.querySelectorAll('.pallyhd').forEach(el=>el.onclick=()=>{ const t=byId[el.dataset.id]; if(t){ focus=t; hover=t; flyTo(t); showPanel(t); } });
 }
-function hidePanel(){ panel.style.display='none'; }
 
-// Kick off last — after every const/function above is initialized — so the
-// synchronous inlined-data path can't hit a temporal-dead-zone reference.
-if(window.__GRAPH_DATA__) boot(window.__GRAPH_DATA__);
-else fetch('./vendor_factions.json').then(r=>r.json()).then(boot)
-       .catch(()=>{ document.getElementById('loading').textContent='Could not load vendor_factions.json'; });
+/* ═════════════════════════ load ═════════════════════════ */
+const getJSON = (inline, url) => inline ? Promise.resolve(inline) : fetch(url).then(r=>{ if(!r.ok) throw new Error(url); return r.json(); });
+Promise.all([getJSON(window.__GRAPH_DATA__, './vendor_factions.json'), getJSON(window.__FIRM_DATA__, './vendor_firms.json')])
+  .then(([g,f])=>{ bootStats(g,f); bootFirms(f); bootGraph(g); })
+  .catch(()=>{ $('loading').textContent='Could not load the vendor data.'; });
 </script>
 </body>
 </html>
