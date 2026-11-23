@@ -54,6 +54,23 @@ jobs:
           print(f'ok: {len(nodes)} nodes, {len(edges)} edges, built {d.get("generated")}')
           EOF
 
+      # vendor-factions.html reads both of these; without either it shows
+      # "Could not load the vendor data" and nothing else.
+      - name: Sanity-check the vendor data
+        run: |
+          python3 - <<'EOF'
+          import json, sys
+          g = json.load(open('vendor_factions.json'))
+          f = json.load(open('vendor_firms.json'))
+          problems = []
+          if len(g.get('nodes') or []) < 30: problems.append('vendor graph has under 30 nodes')
+          if not g.get('payeeTypes'): problems.append('vendor graph has no payeeTypes block')
+          if len(f.get('firms') or []) < 500: problems.append('under 500 firms in vendor_firms.json')
+          if problems:
+              sys.exit('refusing to deploy: ' + '; '.join(problems))
+          print(f"ok: {len(g['nodes'])} vendor nodes, {len(f['firms'])} firms")
+          EOF
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
