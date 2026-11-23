@@ -34,6 +34,8 @@ import gzip, json, os, glob, sys, time, re, math
 from collections import defaultdict, Counter
 from itertools import combinations
 
+from vendor_types import classify, desc_bucket
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 def _arg(flag, default):
@@ -100,6 +102,12 @@ _FIRM_CANON = [
     (re.compile(r'^AMPERSAND\b'),             'AMPERSAND'),
     (re.compile(r'^INNOVATIVE ADVERTISING\b'), 'PEOPLE WHO THINK'),
     (re.compile(r'^PEOPLE WHO THINK\b'),       'PEOPLE WHO THINK'),
+    # renames and spelling splits of the same firm, checked against its filings
+    (re.compile(r'^BUISSON\b'),                'BUISSON CREATIVE STRATEGIES'),
+    (re.compile(r'^TEDDLIE\b'),                'TEDDLIE MEDIA PARTNERS'),
+    (re.compile(r'^PRINTER ?S? WHOLESALE\b'),  'PRINTERS WHOLESALE GROUP'),
+    (re.compile(r'^COMPOSE\b'),                'COMPOSE DIGITAL DESIGN'),
+    (re.compile(r'^MEDIA STRATEGIES (AND |& )?RESEARCH\b'), 'MEDIA STRATEGIES & RESEARCH'),
 ]
 def resolve_key(nv):
     s = nv[4:] if nv.startswith('THE ') else nv
@@ -157,7 +165,7 @@ _POLITICAL = re.compile(
     r'\bPAC\b|POLITICAL ACTION|\bCAMPAIGN\b|COMMITTEE TO (RE-?)?ELECT|'
     r'\bRE-?ELECT\b|FRIENDS OF|CITIZENS FOR|(DEMOCRATIC|REPUBLICAN) (PARTY|'
     r'EXECUTIVE|CAMPAIGN|CAUCUS)|LEGISLATIVE (CAUCUS|BLACK|WOMEN)|'
-    r'\bFOR (GOVERNOR|SENATE|SHERIFF|MAYOR|CONGRESS|COUNCIL|ASSESSOR|'
+    r'\b(FOR|4) (GOVERNOR|SENATE|SENATOR|REPRESENTATIVE|REP|JUDGE|DA|SHERIFF|MAYOR|CONGRESS|COUNCIL|ASSESSOR|'
     r'ATTORNEY|LEGISLATURE|STATE|US|U S)\b')
 
 def load_committee_index():
@@ -217,14 +225,31 @@ def _rows():
                 except Exception:
                     continue
 
+def _cycle(date):
+    """Louisiana's statewide cycle a filing belongs to, named for the governor's
+    election that closes it: 2024-2027 is the 2027 cycle."""
+    try:
+        y = int((date or '')[:4])
+    except ValueError:
+        return None
+    return y + (3 - (y - 2000) % 4) if y >= 2000 else None
+
 t0 = time.time()
 # ── Pass 1: per-vendor document frequency + per-committee service spend ───────
 vendor_filers = defaultdict(set)   # vendor -> {filerNumber}
 spend         = defaultdict(float) # filer -> service $ (picks the top N)
+desc_dollars  = defaultdict(lambda: defaultdict(float))   # vendor -> {desc bucket: $}
+paid          = defaultdict(float) # (vendor, filer, cycle) -> $ (the firm -> clients view)
+v_total       = defaultdict(float) # vendor -> $
+all_names     = defaultdict(Counter) # filer -> {name spelling: n}, every committee
+all_parties   = defaultdict(Counter)
 for r in _rows():
+    fn  = (r.get('filerNumber') or '').strip()
+    if fn:
+        if r.get('candidate'): all_names[fn][r['candidate']] += 1
+        if r.get('party'):     all_parties[fn][r['party']] += 1
     if not _is_service(r.get('description')):
         continue
-    fn  = (r.get('filerNumber') or '').strip()
     raw = (r.get('contributor') or '').strip()
     if not fn or not raw or not _is_vendor(raw):
         continue
@@ -236,14 +261,38 @@ for r in _rows():
         continue
     spend[fn] += amt
     vendor_filers[v].add(fn)
+    desc_dollars[v][desc_bucket(r.get('description'))] += amt
+    paid[(v, fn, _cycle(r.get('date')))] += amt
+    v_total[v] += amt
+
+# What kind of payee each vendor is (vendor_types.py). Only operatives and
+# anonymous field workers make edges; media, commodity and civic payees are
+# counted per committee but tie no one together.
+def _load_candidates():
+    for p in (os.path.join(CACHE, 'la_candidacies_raw.json.gz'),
+              os.path.join(CACHE, '..', 'la_candidacies_raw.json.gz')):
+        if os.path.exists(p):
+            with gzip.open(p, 'rt', encoding='utf-8') as f:
+                return frozenset(resolve_key(norm_vendor(n)) for n in json.load(f))
+    print('  note: la_candidacies_raw.json.gz absent: candidates paid as people not caught')
+    return frozenset()
+CANDIDATES = _load_candidates()
+vtype = {v: classify(v, desc_dollars[v], CANDIDATES) for v in vendor_filers}
+SIGNAL = {'operative', 'field'}
+type_ct = Counter(vtype.values())
+type_usd = Counter()
+for v, t in vtype.items():
+    type_usd[t] += v_total[v]
+print('Payee types: ' + ', '.join(f'{t} {type_ct[t]:,} (${type_usd[t]/1e6:.0f}M)'
+                                   for t in ('operative', 'field', 'media', 'commodity', 'civic')))
 
 N_COM = len(spend)
 df    = {v: len(fs) for v, fs in vendor_filers.items()}
 idf   = {v: math.log(N_COM / d) for v, d in df.items()}          # rarity weight
-stop  = {v for v, d in df.items() if d >= STOPWORD_DF}           # commodity stopwords
+stop  = {v for v, d in df.items() if d >= STOPWORD_DF or vtype[v] not in SIGNAL}
 top   = {fn for fn, _ in sorted(spend.items(), key=lambda x: -x[1])[:TOP_N]}
 print(f'Pass 1: {N_COM:,} committees, {len(df):,} vendors; '
-      f'{len(stop)} commodity stopwords (DF>={STOPWORD_DF}); kept top {len(top)} by spend '
+      f'{len(stop):,} non-signal vendors (DF>={STOPWORD_DF} or not an operative); kept top {len(top)} by spend '
       f'({time.time()-t0:.0f}s)')
 
 # ── Pass 2: per-committee vendor sets (non-stopword) + name/party ─────────────
@@ -251,6 +300,8 @@ vend   = defaultdict(set)     # filer -> {vendor}
 names  = defaultdict(Counter) # filer -> {candidate spelling: count}
 parties= defaultdict(Counter) # filer -> {party: count}
 vend_to_filers = defaultdict(set)
+media_usd = defaultdict(float)   # filer -> $ to stations, cable, papers, billboards
+media_set = defaultdict(set)
 for r in _rows():
     fn = (r.get('filerNumber') or '').strip()
     if fn not in top:
@@ -263,7 +314,12 @@ for r in _rows():
     if not raw or not _is_vendor(raw):
         continue
     v = key_of(raw)
-    if not v or v in stop:
+    if not v:
+        continue
+    if vtype.get(v) == 'media':
+        media_usd[fn] += float(r.get('amount') or 0)
+        media_set[fn].add(v)
+    if v in stop:
         continue
     vend[fn].add(v)
     vend_to_filers[v].add(fn)
@@ -302,9 +358,32 @@ for lst in by_node.values():
     for wj, a, b, sv, j in sorted(lst, key=lambda x: -x[0])[:MAX_PER_NODE]:
         keep[(a, b)] = (sv, wj, j)
 
+def _load_party_fixes():
+    """The party-label corrections shared with the campaign-finance dashboard and
+    Louisiana Airwaves (party_corrections.json on the data-cache release): Gumbo
+    PAC is Democratic, the RGA's PAC Republican, and so on, where the filing
+    says OTH or the name lookup matched a namesake."""
+    for p in (os.path.join(CACHE, 'party_corrections.json'),
+              os.path.join(CACHE, '..', 'party_corrections.json'),
+              os.path.join(CACHE, '..', 'data', 'party_corrections.json'),
+              os.path.join(HERE, 'party_corrections.json')):
+        if os.path.exists(p):
+            with open(p, encoding='utf-8') as f:
+                return json.load(f).get('filers', {})
+    print('  note: party_corrections.json absent: PACs keep their filed party')
+    return {}
+PARTY_FIXES = _load_party_fixes()
+
+def _party_raw(fn, counter):
+    p = counter.most_common(1)[0][0] if counter else 'OTH'
+    p = p if p in ('DEM', 'REP', 'IND', 'LBT', 'GRN') else 'OTH'
+    fix = PARTY_FIXES.get(fn)
+    if fix and (fix.get('when') == 'always' or p == 'OTH'):
+        p = fix['party']
+    return p
+
 def _party(fn):
-    p = parties[fn].most_common(1)[0][0] if parties[fn] else 'OTH'
-    return p if p in ('DEM', 'REP', 'IND', 'LBT', 'GRN') else 'OTH'
+    return _party_raw(fn, parties[fn])
 
 # Resolved key -> readable label (the most-common original spelling), except a
 # firm-canon target shows under its canonical name (Ampersand, not "NCC Media").
@@ -331,22 +410,61 @@ def _interest(v):
     return d if d <= INTEREST_PEAK else 2 * INTEREST_PEAK - d
 edges = []
 for (a, b), (sv, wj, j) in keep.items():
-    ranked = sorted(sv, key=lambda v: (-glue_ct[v], -_interest(v), _disp(v)))[:EDGE_VENDORS]
+    ops = [v for v in sv if vtype[v] == 'operative']
+    ranked = sorted(ops, key=lambda v: (-glue_ct[v], -_interest(v), _disp(v)))[:EDGE_VENDORS]
     top_sv = [[_disp(v), df.get(v, 0)] for v in ranked]
     edges.append({'a': a, 'b': b, 'shared': len(sv), 'jaccard': round(j, 4),
-                  'wjaccard': round(wj, 4), 'topVendors': top_sv})
+                  'wjaccard': round(wj, 4), 'topVendors': top_sv,
+                  # private individuals paid for field work: counted, never named
+                  'field': len(sv) - len(ops)})
 
 node_ids = {e['a'] for e in edges} | {e['b'] for e in edges}
 nodes = []
 for fn in sorted(node_ids, key=lambda f: -spend[f]):
     name = names[fn].most_common(1)[0][0] if names[fn] else f'Filer {fn}'
     nodes.append({'id': fn, 'name': name, 'party': _party(fn),
-                  'spend': round(spend[fn]), 'nVendors': len(vend[fn])})
+                  'spend': round(spend[fn]), 'nVendors': len(vend[fn]),
+                  'media': round(media_usd[fn]), 'nMedia': len(media_set[fn])})
+
+# ── Firm -> clients: the operative layer read the other way round ─────────────
+# Every operative paid at least FIRM_MIN_USD by at least FIRM_MIN_CLIENTS
+# committees, with what each client paid it in each cycle. The page filters this
+# by cycle and party, which is what "who does this firm work for" needs and the
+# committee graph can't show. Field workers are private people and never listed.
+FIRM_MIN_USD, FIRM_MIN_CLIENTS, CLIENT_MIN_USD = 25000, 3, 250
+by_firm = defaultdict(list)
+for (v, fn, cyc), amt in paid.items():
+    if cyc and vtype.get(v) == 'operative' and amt >= CLIENT_MIN_USD:
+        by_firm[v].append((fn, cyc, amt))
+firms, com_ix, committees = [], {}, []
+for v, rows in by_firm.items():
+    clients = {fn for fn, _, _ in rows}
+    if len(clients) < FIRM_MIN_CLIENTS or v_total[v] < FIRM_MIN_USD:
+        continue
+    out_rows = []
+    for fn, cyc, amt in sorted(rows, key=lambda x: (-x[2])):
+        if fn not in com_ix:
+            com_ix[fn] = len(committees)
+            nm = all_names[fn].most_common(1)[0][0] if all_names[fn] else f'Filer {fn}'
+            committees.append([fn, nm, _party_raw(fn, all_parties[fn])])
+        out_rows.append([com_ix[fn], cyc, round(amt)])
+    firms.append({'name': _disp(v), 'total': round(sum(r[2] for r in rows)),
+                  'nClients': len(clients), 'paid': out_rows})
+firms.sort(key=lambda f: -f['total'])
+FIRMS_OUT = os.path.join(HERE, 'vendor_firms.json')
+with open(FIRMS_OUT, 'w', encoding='utf-8') as f:
+    json.dump({'generated': time.strftime('%Y-%m-%d'),
+               'cycles': sorted({c for f_ in firms for _, c, _ in f_['paid']}),
+               'committees': committees, 'firms': firms}, f,
+              separators=(',', ':'), ensure_ascii=False)
+print(f'Wrote {FIRMS_OUT}: {len(firms)} firms, {len(committees)} client committees')
 
 out = {
     'generated': time.strftime('%Y-%m-%d'),
     'params': {'top': TOP_N, 'stopword_df': STOPWORD_DF, 'min_shared': MIN_SHARED,
                'min_wjaccard': MIN_WJACCARD, 'max_per_node': MAX_PER_NODE},
+    'payeeTypes': {t: {'vendors': type_ct[t], 'usd': round(type_usd[t])}
+                   for t in ('operative', 'field', 'media', 'commodity', 'civic')},
     'nodes': nodes,
     'edges': edges,
 }
